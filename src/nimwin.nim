@@ -139,6 +139,7 @@ when isMainModule:
     let processExited = processChan.tryRecv()
 
     if processExited.dataAvailable:
+      openProcesses[processExited.msg].close
       openProcesses.del(processExited.msg)
 
     # TODO refactor using XPending or XCB?
@@ -149,7 +150,6 @@ when isMainModule:
 
     # For spawning a terminal we also want events for the root window
     if (ev.theType == KeyPress):
-      echo "Executing xterm"
       let p = startTerminal()
       openProcesses[p.processID] = p
       spawn handleProcess(p)
