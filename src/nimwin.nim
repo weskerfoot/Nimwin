@@ -64,36 +64,40 @@ proc grabMouse(display : PDisplay, button : int) =
                       None,
                       None)
 
-proc grabKeys(display : PDisplay) =
+proc grabKeyCombo(display : PDisplay, key : TKeySym) =
   discard XGrabKey(display,
-                   XKeySymToKeyCode(display, XK_T).cint,
+                   XKeySymToKeyCode(display, key).cint,
                    ControlMask.cuint or Mod1Mask.cuint,
                    DefaultRootWindow(display),
                    1.cint,
                    GrabModeAsync.cint,
                    GrabModeAsync.cint)
   discard XGrabKey(display,
-                   XKeySymToKeyCode(display, XK_T).cint,
+                   XKeySymToKeyCode(display, key).cint,
                    ControlMask.cuint or Mod1Mask.cuint or Mod2Mask.cuint,
                    DefaultRootWindow(display),
                    1.cint,
                    GrabModeAsync.cint,
                    GrabModeAsync.cint)
   discard XGrabKey(display,
-                   XKeySymToKeyCode(display, XK_T).cint,
+                   XKeySymToKeyCode(display, key).cint,
                    ControlMask.cuint or Mod1Mask.cuint or LockMask.cuint,
                    DefaultRootWindow(display),
                    1.cint,
                    GrabModeAsync.cint,
                    GrabModeAsync.cint)
   discard XGrabKey(display,
-                   XKeySymToKeyCode(display, XK_T).cint,
+                   XKeySymToKeyCode(display, key).cint,
                    ControlMask.cuint or Mod1Mask.cuint or LockMask.cuint or Mod2Mask.cuint,
                    DefaultRootWindow(display),
                    1.cint,
                    GrabModeAsync.cint,
                    GrabModeAsync.cint)
 
+
+proc startTerminal() =
+  # TODO track running processes and close ones that have finished
+  discard startProcess("/usr/bin/xterm")
 
 when isMainModule:
   var start : TXButtonEvent
@@ -104,7 +108,8 @@ when isMainModule:
 
   root = DefaultRootWindow(display)
 
-  display.grabKeys
+  display.grabKeyCombo(XK_T)
+  display.grabKeyCombo(XK_Return)
   display.grabMouse(1)
   display.grabMouse(3)
 
@@ -117,10 +122,12 @@ when isMainModule:
     # subwindow is because we grabbed the root window
     # and we want events in its children
 
+    echo $ev.xkey
+    echo $XK_T
     # For spawning a terminal we also want events for the root window
     if (ev.theType == KeyPress):
       echo "Executing xterm"
-      discard spawn "xterm".execProcess
+      startTerminal()
 
     # TODO have to actually check which keys were pressed, not assume they were the only ones we grabbed
     # since we're going to want to grab multiple combos soon
@@ -135,7 +142,8 @@ when isMainModule:
 
       # Discard any following MotionNotify events
       # This avoids "movement lag"
-      while display.XCheckTypedEvent(MotionNotify, ev.addr) != 0: continue
+      while display.XCheckTypedEvent(MotionNotify, ev.addr) != 0:
+        continue
 
       var xDiff : int = ev.xButton.xRoot - start.xRoot
       var yDiff : int = ev.xButton.yRoot - start.yRoot
