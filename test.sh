@@ -1,5 +1,6 @@
 #! /usr/bin/env bash
 
+nimble build
 pkill -f Xephyr
 
 Xephyr -ac -screen 1280x1024 -br -reset -terminate :1 &
