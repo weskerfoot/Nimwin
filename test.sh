@@ -1,5 +1,7 @@
 #! /usr/bin/env bash
 
+pkill -f Xephyr
+
 Xephyr -ac -screen 1280x1024 -br -reset -terminate :1 &
 sleep 5
 
