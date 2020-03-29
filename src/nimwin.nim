@@ -1,4 +1,5 @@
 import x11/xlib, x11/xutil, x11/x, x11/keysym
+import threadpool, osproc
 
 proc getDisplay : PDisplay =
   result = XOpenDisplay(nil)
@@ -18,15 +19,35 @@ proc grabMouse(display : PDisplay, button : int) =
                       None)
 
 proc grabKeys(display : PDisplay) =
-  let keyModifier = "F1"
   discard XGrabKey(display,
-                   XKeySymToKeyCode(display,
-                                    XStringToKeySym(keyModifier.cstring)).cint,
-                   Mod1Mask.cuint or Mod2Mask.cuint,
+                   XKeySymToKeyCode(display, XK_T).cint,
+                   ControlMask.cuint or Mod1Mask.cuint,
                    DefaultRootWindow(display),
                    1.cint,
                    GrabModeAsync.cint,
                    GrabModeAsync.cint)
+  discard XGrabKey(display,
+                   XKeySymToKeyCode(display, XK_T).cint,
+                   ControlMask.cuint or Mod1Mask.cuint or Mod2Mask.cuint,
+                   DefaultRootWindow(display),
+                   1.cint,
+                   GrabModeAsync.cint,
+                   GrabModeAsync.cint)
+  discard XGrabKey(display,
+                   XKeySymToKeyCode(display, XK_T).cint,
+                   ControlMask.cuint or Mod1Mask.cuint or LockMask.cuint,
+                   DefaultRootWindow(display),
+                   1.cint,
+                   GrabModeAsync.cint,
+                   GrabModeAsync.cint)
+  discard XGrabKey(display,
+                   XKeySymToKeyCode(display, XK_T).cint,
+                   ControlMask.cuint or Mod1Mask.cuint or LockMask.cuint or Mod2Mask.cuint,
+                   DefaultRootWindow(display),
+                   1.cint,
+                   GrabModeAsync.cint,
+                   GrabModeAsync.cint)
+
 
 when isMainModule:
   var start : TXButtonEvent
@@ -48,8 +69,15 @@ when isMainModule:
     # subwindow is because we grabbed the root window
     # and we want events in its children
 
-    if (ev.theType == KeyPress) and (ev.xKey.subWindow != None):
-      discard XRaiseWindow(display, ev.xKey.subWindow)
+    # For spawning a terminal we also want events for the root window
+    if (ev.theType == KeyPress):
+      echo "Executing xterm"
+      discard spawn "xterm".execProcess
+
+    # TODO have to actually check which keys were pressed, not assume they were the only ones we grabbed
+    # since we're going to want to grab multiple combos soon
+    #if (ev.theType == KeyPress) and (ev.xKey.subWindow != None):
+      #discard XRaiseWindow(display, ev.xKey.subWindow)
 
     elif (ev.theType == ButtonPress) and (ev.xButton.subWindow != None):
       discard XGetWindowAttributes(display, ev.xButton.subWindow, attr.addr)
