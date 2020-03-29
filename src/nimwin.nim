@@ -1,5 +1,5 @@
 import x11/xlib, x11/xutil, x11/x, x11/keysym
-import threadpool, osproc
+import threadpool, osproc, tables
 
 var root : TWindow
 
@@ -95,9 +95,27 @@ proc grabKeyCombo(display : PDisplay, key : TKeySym) =
                    GrabModeAsync.cint)
 
 
-proc startTerminal() =
+# When spawning a new process:
+#   Create an entry in a table or set with the PID
+#   Create a thread that simple waits for it to exit
+#   Send a message via channel to the main thread when it's done waiting for it to exit
+#   Check for events on the current iteration, close the process, remove it from the set of open processes
+
+# Used to signal when a process has exited
+# Obviously only used for processes nimwin manages
+var processChan : Channel[int]
+
+processChan.open(0)
+
+proc startTerminal() : Process =
   # TODO track running processes and close ones that have finished
-  discard startProcess("/usr/bin/xterm")
+  startProcess("/usr/bin/xterm")
+
+proc handleProcess(p : Process) =
+  echo "Called handle process"
+  echo p.processID
+  discard p.waitForExit
+  processChan.send(p.processID)
 
 when isMainModule:
   var start : TXButtonEvent
@@ -115,19 +133,26 @@ when isMainModule:
 
   start.subWindow = None
 
+  var openProcesses = initTable[int, Process]() # hashset of processes
+
   while true:
+    let processExited = processChan.tryRecv()
+
+    if processExited.dataAvailable:
+      openProcesses.del(processExited.msg)
+
     # TODO refactor using XPending or XCB?
     discard XNextEvent(display, ev.addr)
 
     # subwindow is because we grabbed the root window
     # and we want events in its children
 
-    echo $ev.xkey
-    echo $XK_T
     # For spawning a terminal we also want events for the root window
     if (ev.theType == KeyPress):
       echo "Executing xterm"
-      startTerminal()
+      let p = startTerminal()
+      openProcesses[p.processID] = p
+      spawn handleProcess(p)
 
     # TODO have to actually check which keys were pressed, not assume they were the only ones we grabbed
     # since we're going to want to grab multiple combos soon
