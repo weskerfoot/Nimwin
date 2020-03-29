@@ -1,6 +1,52 @@
 import x11/xlib, x11/xutil, x11/x, x11/keysym
 import threadpool, osproc
 
+var root : TWindow
+
+type Window = ref object of RootObj
+  x : cint
+  y : cint
+  width : cint
+  height : cint
+  win : TWindow
+  screen : PScreen
+
+iterator getChildren(display : PDisplay, rootHeight : int, rootWidth : int) : Window =
+  var currentWindow : PWindow
+  var rootReturn : TWindow
+  var parentReturn : TWindow
+  var childrenReturn : PWindow
+  var nChildrenReturn : cuint
+
+  discard XQueryTree(display,
+                     root,
+                     rootReturn.addr,
+                     parentReturn.addr,
+                     childrenReturn.addr,
+                     nChildrenReturn.addr)
+
+
+  for i in 0..(nChildrenReturn.int - 1):
+    var attr : TXWindowAttributes
+
+    currentWindow = cast[PWindow](
+      cast[uint](childrenReturn) + cast[uint](i * currentWindow[].sizeof)
+    )
+
+    if display.XGetWindowAttributes(currentWindow[], attr.addr) == BadWindow:
+      continue
+
+    yield Window(
+      x: attr.x.cint,
+      y: attr.y.cint,
+      width: attr.width,
+      height: attr.height,
+      win: currentWindow[],
+      screen: attr.screen
+    )
+
+  discard XFree(childrenReturn)
+
 proc getDisplay : PDisplay =
   result = XOpenDisplay(nil)
   if result == nil:
@@ -55,6 +101,8 @@ when isMainModule:
   var attr : TXWindowAttributes
 
   let display = getDisplay()
+
+  root = DefaultRootWindow(display)
 
   display.grabKeys
   display.grabMouse(1)
