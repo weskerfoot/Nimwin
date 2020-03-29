@@ -22,4 +22,4 @@ If you want to run xterm, for example, just run `xterm -display :1`
 
 ### How to move windows
 
-alt + right click allows you to resize, alt + left click allows you to move.
+`alt + right` click allows you to resize, `alt + left click` allows you to move, `ctrl + alt + t` opens an xterm
