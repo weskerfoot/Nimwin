@@ -16,7 +16,7 @@ type Window = ref object of RootObj
   win : TWindow
   screen : PScreen
 
-iterator getChildren(display : PDisplay, rootHeight : int, rootWidth : int) : Window =
+iterator getChildren(display : PDisplay) : Window =
   var currentWindow : PWindow
   var rootReturn : TWindow
   var parentReturn : TWindow
@@ -168,6 +168,12 @@ when isMainModule:
         if ev.xKey.subWindow != None:
           # Cycle through subwindows of the root window
           discard XCirculateSubwindows(display, root, RaiseLowest)
+          discard display.XFlush()
+
+          let windowStack = toSeq(getChildren(display))
+          echo windowStack.len
+
+          discard display.XSetInputFocus(windowStack[^1].win, RevertToPointerRoot, CurrentTime)
 
     elif (ev.theType == ButtonPress) and (ev.xButton.subWindow != None):
       discard XGetWindowAttributes(display, ev.xButton.subWindow, attr.addr)
