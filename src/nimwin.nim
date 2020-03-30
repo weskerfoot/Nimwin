@@ -179,6 +179,7 @@ when isMainModule:
       # This avoids "movement lag"
       while display.XCheckTypedEvent(MotionNotify, ev.addr) != 0:
         continue
+      discard display.XFlush()
 
       var xDiff : int = ev.xButton.xRoot - start.xRoot
       var yDiff : int = ev.xButton.yRoot - start.yRoot
