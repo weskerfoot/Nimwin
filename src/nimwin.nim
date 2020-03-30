@@ -136,7 +136,7 @@ when isMainModule:
 
   display.grabKeyCombo(XK_Return, @[ShiftMask.cuint])
   display.grabKeyCombo(XK_T, @[ShiftMask.cuint])
-  display.grabKeyCombo(XK_F1)
+  display.grabKeyCombo(XK_Tab)
   display.grabMouse(1)
   display.grabMouse(3)
 
@@ -164,9 +164,10 @@ when isMainModule:
         openProcesses[p.processID] = p
         spawn handleProcess(p)
 
-      HandleKey(XK_F1):
+      HandleKey(XK_Tab):
         if ev.xKey.subWindow != None:
-          discard XRaiseWindow(display, ev.xKey.subWindow)
+          # Cycle through subwindows of the root window
+          discard XCirculateSubwindows(display, root, RaiseLowest)
 
     elif (ev.theType == ButtonPress) and (ev.xButton.subWindow != None):
       discard XGetWindowAttributes(display, ev.xButton.subWindow, attr.addr)
