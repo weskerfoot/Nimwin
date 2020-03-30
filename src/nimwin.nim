@@ -3,6 +3,11 @@ import threadpool, osproc, tables, sequtils
 
 var root : TWindow
 
+template HandleKey(key : TKeySym, body : untyped) : untyped =
+    block:
+      if (XLookupKeySym(cast[PXKeyEvent](ev.xkey.addr), 0) == key.cuint):
+        body
+
 type Window = ref object of RootObj
   x : cint
   y : cint
@@ -117,8 +122,6 @@ proc startTerminal() : Process =
   startProcess("/usr/bin/xterm")
 
 proc handleProcess(p : Process) =
-  echo "Called handle process"
-  echo p.processID
   discard p.waitForExit
   processChan.send(p.processID)
 
@@ -133,6 +136,7 @@ when isMainModule:
 
   display.grabKeyCombo(XK_Return, @[ShiftMask.cuint])
   display.grabKeyCombo(XK_T, @[ShiftMask.cuint])
+  display.grabKeyCombo(XK_F1)
   display.grabMouse(1)
   display.grabMouse(3)
 
@@ -150,19 +154,19 @@ when isMainModule:
     # TODO refactor using XPending or XCB?
     discard XNextEvent(display, ev.addr)
 
-    # subwindow is because we grabbed the root window
+    # The reason we look at the subwindow is because we grabbed the root window
     # and we want events in its children
+    # For spawning, e.g. a terminal we also want events for the root window
 
-    # For spawning a terminal we also want events for the root window
-    if (ev.theType == KeyPress):
-      let p = startTerminal()
-      openProcesses[p.processID] = p
-      spawn handleProcess(p)
+    if ev.theType == KeyPress:
+      HandleKey(XK_Return):
+        let p = startTerminal()
+        openProcesses[p.processID] = p
+        spawn handleProcess(p)
 
-    # TODO have to actually check which keys were pressed, not assume they were the only ones we grabbed
-    # since we're going to want to grab multiple combos soon
-    #if (ev.theType == KeyPress) and (ev.xKey.subWindow != None):
-      #discard XRaiseWindow(display, ev.xKey.subWindow)
+      HandleKey(XK_F1):
+        if ev.xKey.subWindow != None:
+          discard XRaiseWindow(display, ev.xKey.subWindow)
 
     elif (ev.theType == ButtonPress) and (ev.xButton.subWindow != None):
       discard XGetWindowAttributes(display, ev.xButton.subWindow, attr.addr)
