@@ -3,6 +3,11 @@ import threadpool, osproc, tables, sequtils
 
 var root : TWindow
 
+proc handleBadWindow(display : PDisplay, ev : PXErrorEvent) : cint {.cdecl.} =
+  # resourceID maps to the Window's XID
+  # ev.resourceID
+  0
+
 template HandleKey(key : TKeySym, body : untyped) : untyped =
     block:
       if (XLookupKeySym(cast[PXKeyEvent](ev.xkey.addr), 0) == key.cuint):
@@ -143,6 +148,8 @@ when isMainModule:
   start.subWindow = None
 
   var openProcesses = initTable[int, Process]() # hashset of processes
+
+  discard XSetErrorHandler(handleBadWindow)
 
   while true:
     let processExited = processChan.tryRecv()
