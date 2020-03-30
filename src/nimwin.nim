@@ -1,5 +1,5 @@
 import x11/xlib, x11/xutil, x11/x, x11/keysym
-import threadpool, osproc, tables
+import threadpool, osproc, tables, sequtils
 
 var root : TWindow
 
@@ -64,31 +64,33 @@ proc grabMouse(display : PDisplay, button : int) =
                       None,
                       None)
 
-proc grabKeyCombo(display : PDisplay, key : TKeySym) =
+proc grabKeyCombo(display : PDisplay,
+                  key : TKeySym,
+                  masks : seq[cuint] = @[]) =
   discard XGrabKey(display,
                    XKeySymToKeyCode(display, key).cint,
-                   ControlMask.cuint or Mod1Mask.cuint,
+                   foldr(@[Mod1Mask.cuint] & masks, a or b),
                    DefaultRootWindow(display),
                    1.cint,
                    GrabModeAsync.cint,
                    GrabModeAsync.cint)
   discard XGrabKey(display,
                    XKeySymToKeyCode(display, key).cint,
-                   ControlMask.cuint or Mod1Mask.cuint or Mod2Mask.cuint,
+                   foldr(@[Mod1Mask.cuint, Mod2Mask.cuint] & masks, a or b),
                    DefaultRootWindow(display),
                    1.cint,
                    GrabModeAsync.cint,
                    GrabModeAsync.cint)
   discard XGrabKey(display,
                    XKeySymToKeyCode(display, key).cint,
-                   ControlMask.cuint or Mod1Mask.cuint or LockMask.cuint,
+                   foldr(@[Mod1Mask.cuint, LockMask.cuint] & masks, a or b),
                    DefaultRootWindow(display),
                    1.cint,
                    GrabModeAsync.cint,
                    GrabModeAsync.cint)
   discard XGrabKey(display,
                    XKeySymToKeyCode(display, key).cint,
-                   ControlMask.cuint or Mod1Mask.cuint or LockMask.cuint or Mod2Mask.cuint,
+                   foldr(@[Mod1Mask.cuint, LockMask.cuint, Mod2Mask.cuint] & masks, a or b),
                    DefaultRootWindow(display),
                    1.cint,
                    GrabModeAsync.cint,
@@ -126,8 +128,7 @@ when isMainModule:
 
   root = DefaultRootWindow(display)
 
-  display.grabKeyCombo(XK_T)
-  display.grabKeyCombo(XK_Return)
+  display.grabKeyCombo(XK_Return, @[ShiftMask.cuint])
   display.grabMouse(1)
   display.grabMouse(3)
 
