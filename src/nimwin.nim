@@ -67,6 +67,10 @@ proc grabMouse(display : PDisplay, button : int) =
 proc grabKeyCombo(display : PDisplay,
                   key : TKeySym,
                   masks : seq[cuint] = @[]) =
+
+  # The reason we have 4 XGrabKey calls here is that
+  # the user might have num lock on
+  # and we still want to be able to grab these key combos
   discard XGrabKey(display,
                    XKeySymToKeyCode(display, key).cint,
                    foldr(@[Mod1Mask.cuint] & masks, a or b),
@@ -110,7 +114,6 @@ var processChan : Channel[int]
 processChan.open(0)
 
 proc startTerminal() : Process =
-  # TODO track running processes and close ones that have finished
   startProcess("/usr/bin/xterm")
 
 proc handleProcess(p : Process) =
@@ -129,6 +132,7 @@ when isMainModule:
   root = DefaultRootWindow(display)
 
   display.grabKeyCombo(XK_Return, @[ShiftMask.cuint])
+  display.grabKeyCombo(XK_T, @[ShiftMask.cuint])
   display.grabMouse(1)
   display.grabMouse(3)
 
