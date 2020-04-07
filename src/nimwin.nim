@@ -174,13 +174,14 @@ when isMainModule:
       HandleKey(XK_Tab):
         if ev.xKey.subWindow != None:
           # Cycle through subwindows of the root window
-          discard XCirculateSubwindows(display, root, RaiseLowest)
-          discard display.XFlush()
+          #discard XCirculateSubwindows(display, root, RaiseLowest)
+          #discard display.XFlush()
 
           let windowStack = toSeq(getChildren(display))
           echo windowStack.len
 
-          discard display.XSetInputFocus(windowStack[^1].win, RevertToPointerRoot, CurrentTime)
+          discard display.XSetInputFocus(windowStack[0].win, RevertToPointerRoot, CurrentTime)
+          discard display.XRaiseWindow(windowStack[0].win)
 
     elif (ev.theType == ButtonPress) and (ev.xButton.subWindow != None):
       discard XGetWindowAttributes(display, ev.xButton.subWindow, attr.addr)
