@@ -46,7 +46,10 @@ iterator getChildren(display : PDisplay) : Window =
     if display.XGetWindowAttributes(currentWindow[], attr.addr) == BadWindow:
       continue
 
-    yield Window(
+    if attr.map_state != IsViewable:
+      continue
+
+    let win = Window(
       x: attr.x.cint,
       y: attr.y.cint,
       width: attr.width,
@@ -54,6 +57,8 @@ iterator getChildren(display : PDisplay) : Window =
       win: currentWindow[],
       screen: attr.screen
     )
+
+    yield win
 
   discard XFree(childrenReturn)
 
@@ -178,7 +183,6 @@ when isMainModule:
           #discard display.XFlush()
 
           let windowStack = toSeq(getChildren(display))
-          echo windowStack.len
 
           discard display.XSetInputFocus(windowStack[0].win, RevertToPointerRoot, CurrentTime)
           discard display.XRaiseWindow(windowStack[0].win)
