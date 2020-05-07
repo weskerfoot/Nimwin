@@ -1,5 +1,5 @@
 import x11/xlib, x11/xutil, x11/x, x11/keysym
-import threadpool, osproc, tables, sequtils
+import threadpool, osproc, tables, sequtils, posix
 
 var root : TWindow
 
@@ -147,6 +147,7 @@ when isMainModule:
   display.grabKeyCombo(XK_Return, @[ShiftMask.cuint])
   display.grabKeyCombo(XK_T, @[ShiftMask.cuint])
   display.grabKeyCombo(XK_Tab)
+  display.grabKeyCombo(XK_Q)
   display.grabMouse(1)
   display.grabMouse(3)
 
@@ -186,6 +187,13 @@ when isMainModule:
 
           discard display.XSetInputFocus(windowStack[0].win, RevertToPointerRoot, CurrentTime)
           discard display.XRaiseWindow(windowStack[0].win)
+
+      HandleKey(XK_Q):
+        let env : cstringArray = allocCStringArray(["DISPLAY=:1"])
+
+        echo "Restarting"
+
+        discard execve("/home/wes/Nimwin/nimwin".cstring, nil, env)
 
     elif (ev.theType == ButtonPress) and (ev.xButton.subWindow != None):
       discard XGetWindowAttributes(display, ev.xButton.subWindow, attr.addr)
