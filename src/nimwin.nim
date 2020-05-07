@@ -1,5 +1,5 @@
 import x11/xlib, x11/xutil, x11/x, x11/keysym
-import threadpool, osproc, tables, sequtils, posix
+import threadpool, osproc, tables, sequtils, posix, strformat, os
 
 var root : TWindow
 
@@ -189,11 +189,14 @@ when isMainModule:
           discard display.XRaiseWindow(windowStack[0].win)
 
       HandleKey(XK_Q):
-        let env : cstringArray = allocCStringArray(["DISPLAY=:1"])
+        let displayNum = display.DisplayString
+        let env : cstringArray = allocCStringArray([fmt"DISPLAY={displayNum}"])
 
-        echo "Restarting"
+        let currentPath = getAppDir()
 
-        discard execve("/home/wes/Nimwin/nimwin".cstring, nil, env)
+        if fmt"{currentPath}/nimwin".existsFile:
+          echo fmt"Restarting: executing {currentPath}/nimwin on {displayNum}"
+          discard execve(fmt"{currentPath}/nimwin".cstring, nil, env)
 
     elif (ev.theType == ButtonPress) and (ev.xButton.subWindow != None):
       discard XGetWindowAttributes(display, ev.xButton.subWindow, attr.addr)
