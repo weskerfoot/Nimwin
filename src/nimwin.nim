@@ -1,5 +1,5 @@
 import x11/xlib, x11/xutil, x11/x, x11/keysym
-import threadpool, osproc, tables, sequtils, posix, strformat, os
+import threadpool, osproc, tables, sequtils, posix, strformat, os, sugar
 
 var root : TWindow
 
@@ -25,7 +25,34 @@ type Window = ref object of RootObj
   win : TWindow
   screen : PScreen
 
-iterator getChildren(display : PDisplay) : Window =
+iterator getProperties(display : PDisplay, window : TWindow) : string =
+  # Get properties of a given window on a display
+  var nPropsReturn : cint
+
+  # pointer to a list of word32
+  var atoms : PAtom = display.XListProperties(window, nPropsReturn.addr)
+  var currentAtom : PAtom
+  var currentAtomName : cstring
+
+  # Iterate over the list of atom names
+  for i in 0..(nPropsReturn.int - 1):
+    currentAtom = cast[PAtom](
+      cast[uint](atoms) + cast[uint](i * currentAtom[].sizeof)
+    )
+
+    currentAtomName = display.XGetAtomName(currentAtom[])
+    var atomName = newString(currentAtomName.len)
+
+    copyMem(addr(atomName[0]), currentAtomName, currentAtomName.len)
+
+    discard currentAtomName.XFree
+
+    yield atomName
+
+  discard atoms.XFree
+
+
+iterator getChildren(display : PDisplay, logFile : File) : Window =
   var currentWindow : PWindow
   var rootReturn : TWindow
   var parentReturn : TWindow
@@ -50,7 +77,10 @@ iterator getChildren(display : PDisplay) : Window =
     if display.XGetWindowAttributes(currentWindow[], attr.addr) == BadWindow:
       continue
 
-    if attr.map_state != IsViewable:
+    if attr.map_state == IsUnmapped or attr.map_state == IsUnviewable:
+      continue
+
+    if attr.override_redirect == 1:
       continue
 
     let win = Window(
@@ -61,6 +91,11 @@ iterator getChildren(display : PDisplay) : Window =
       win: currentWindow[],
       screen: attr.screen
     )
+
+    let ignored = @["_NET_WM_STRUT_PARTIAL", "_NET_WM_STRUT"]
+
+    if any(toSeq(getProperties(display, win.win)), (p) => p.in(ignored)):
+      continue
 
     yield win
 
@@ -196,7 +231,7 @@ when isMainModule:
           #discard XCirculateSubwindows(display, root, RaiseLowest)
           #discard display.XFlush()
 
-          let windowStack = toSeq(getChildren(display))
+          let windowStack = toSeq(getChildren(display, logFile))
 
           discard display.XSetInputFocus(windowStack[0].win, RevertToPointerRoot, CurrentTime)
           discard display.XRaiseWindow(windowStack[0].win)
