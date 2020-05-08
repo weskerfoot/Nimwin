@@ -8,6 +8,10 @@ proc handleBadWindow(display : PDisplay, ev : PXErrorEvent) : cint {.cdecl.} =
   # ev.resourceID
   0
 
+proc handleIOError(display : PDisplay) : cint {.cdecl.} =
+  0
+
+
 template HandleKey(key : TKeySym, body : untyped) : untyped =
     block:
       if (XLookupKeySym(cast[PXKeyEvent](ev.xkey.addr), 0) == key.cuint):
@@ -136,11 +140,19 @@ proc handleProcess(p : Process) =
   processChan.send(p.processID)
 
 when isMainModule:
+  discard "~/.nimwin".expandTilde.existsOrCreateDir
+
+  var logFile : File = expandTilde("~/.nimwin/nimwin_log").open(fmWrite)
+  logFile.writeLine("Starting Nimwin")
+
   var start : TXButtonEvent
   var ev : TXEvent
   var attr : TXWindowAttributes
 
   let display = getDisplay()
+  let displayNum = display.DisplayString
+
+  logFile.writeLine(fmt"Opened display {displayNum}")
 
   root = DefaultRootWindow(display)
 
@@ -156,6 +168,7 @@ when isMainModule:
   var openProcesses = initTable[int, Process]() # hashset of processes
 
   discard XSetErrorHandler(handleBadWindow)
+  discard XSetIOErrorHandler(handleIOError)
 
   while true:
     let processExited = processChan.tryRecv()
@@ -189,14 +202,19 @@ when isMainModule:
           discard display.XRaiseWindow(windowStack[0].win)
 
       HandleKey(XK_Q):
-        let displayNum = display.DisplayString
-        let env : cstringArray = allocCStringArray([fmt"DISPLAY={displayNum}"])
-
         let currentPath = getAppDir()
 
         if fmt"{currentPath}/nimwin".existsFile:
-          echo fmt"Restarting: executing {currentPath}/nimwin on {displayNum}"
-          discard execve(fmt"{currentPath}/nimwin".cstring, nil, env)
+          logFile.writeLine("Trying to restart Nimwin")
+          logFile.writeLine(fmt"Restarting: executing {currentPath}/nimwin on display={displayNum}")
+          logFile.flushFile
+
+          discard display.XCloseDisplay
+
+          let restartResult = execvp(fmt"{currentPath}/nimwin".cstring, nil)
+
+          if restartResult == -1:
+            quit("Failed to restart Nimwin")
 
     elif (ev.theType == ButtonPress) and (ev.xButton.subWindow != None):
       discard XGetWindowAttributes(display, ev.xButton.subWindow, attr.addr)
