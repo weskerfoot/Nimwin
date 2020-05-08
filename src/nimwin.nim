@@ -200,7 +200,7 @@ when isMainModule:
   display.grabKeyCombo(XK_Tab)
   display.grabKeyCombo(XK_Q)
   display.grabKeyCombo(XK_P)
-  display.grabKeyCombo(XK_C)
+  display.grabKeyCombo(XK_C, @[ShiftMask.cuint])
   display.grabMouse(1)
   display.grabMouse(3)
 
@@ -231,6 +231,10 @@ when isMainModule:
         openProcesses[p.processID] = p
         spawn handleProcess(p)
 
+      HandleKey(XK_C):
+        let windowStack = toSeq(getChildren(display, logFile))
+        discard display.XDestroyWindow(windowStack[^1].win)
+
       HandleKey(XK_Tab):
         if ev.xKey.subWindow != None:
           # Cycle through subwindows of the root window
@@ -246,10 +250,6 @@ when isMainModule:
         let p = launcher()
         openProcesses[p.processID] = p
         spawn handleProcess(p)
-
-      HandleKey(XK_C):
-        let windowStack = toSeq(getChildren(display, logFile))
-        discard display.XDestroyWindow(windowStack[^1].win)
 
       HandleKey(XK_Q):
         let currentPath = getAppDir()
