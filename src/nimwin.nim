@@ -94,7 +94,7 @@ iterator getChildren(display : PDisplay, logFile : File) : Window =
 
     let ignored = @["_NET_WM_STRUT_PARTIAL", "_NET_WM_STRUT"]
 
-    if any(toSeq(getProperties(display, win.win)), (p) => p.in(ignored)):
+    if toSeq(getProperties(display, win.win)).anyIt(it.in(ignored)):
       continue
 
     yield win
@@ -249,7 +249,7 @@ when isMainModule:
 
       HandleKey(XK_C):
         let windowStack = toSeq(getChildren(display, logFile))
-        discard display.XDestroyWindow(windowStack[0].win)
+        discard display.XDestroyWindow(windowStack[^1].win)
 
       HandleKey(XK_Q):
         let currentPath = getAppDir()
