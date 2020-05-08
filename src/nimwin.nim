@@ -170,6 +170,10 @@ processChan.open(0)
 proc startTerminal() : Process =
   startProcess("/usr/bin/xterm")
 
+proc launcher() : Process =
+  let launcher_path = getEnv("NIMWIN_LAUNCHER", "/usr/bin/dmenu_run")
+  startProcess(launcher_path)
+
 proc handleProcess(p : Process) =
   discard p.waitForExit
   processChan.send(p.processID)
@@ -195,6 +199,7 @@ when isMainModule:
   display.grabKeyCombo(XK_T, @[ShiftMask.cuint])
   display.grabKeyCombo(XK_Tab)
   display.grabKeyCombo(XK_Q)
+  display.grabKeyCombo(XK_P)
   display.grabMouse(1)
   display.grabMouse(3)
 
@@ -235,6 +240,11 @@ when isMainModule:
 
           discard display.XSetInputFocus(windowStack[0].win, RevertToPointerRoot, CurrentTime)
           discard display.XRaiseWindow(windowStack[0].win)
+
+      HandleKey(XK_P):
+        let p = launcher()
+        openProcesses[p.processID] = p
+        spawn handleProcess(p)
 
       HandleKey(XK_Q):
         let currentPath = getAppDir()
