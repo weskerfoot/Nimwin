@@ -200,6 +200,7 @@ when isMainModule:
   display.grabKeyCombo(XK_Tab)
   display.grabKeyCombo(XK_Q)
   display.grabKeyCombo(XK_P)
+  display.grabKeyCombo(XK_C)
   display.grabMouse(1)
   display.grabMouse(3)
 
@@ -245,6 +246,10 @@ when isMainModule:
         let p = launcher()
         openProcesses[p.processID] = p
         spawn handleProcess(p)
+
+      HandleKey(XK_C):
+        let windowStack = toSeq(getChildren(display, logFile))
+        discard display.XDestroyWindow(windowStack[0].win)
 
       HandleKey(XK_Q):
         let currentPath = getAppDir()
