@@ -1,5 +1,5 @@
 import x11/xlib, x11/xutil, x11/x, x11/keysym
-import threadpool, osproc, tables, sequtils, posix, strformat, os, sugar
+import threadpool, osproc, tables, sequtils, posix, strformat, os, sugar, options
 
 var root : TWindow
 
@@ -51,6 +51,11 @@ iterator getProperties(display : PDisplay, window : TWindow) : string =
 
   discard atoms.XFree
 
+proc getAttributes(display : PDisplay, window : PWindow) : Option[TXWindowAttributes] =
+  var attrs : TXWindowAttributes
+  if display.XGetWindowAttributes(window[], attrs.addr) == BadWindow:
+    return none(TXWindowAttributes)
+  return some(attrs)
 
 iterator getChildren(display : PDisplay, logFile : File) : Window =
   var currentWindow : PWindow
@@ -68,28 +73,29 @@ iterator getChildren(display : PDisplay, logFile : File) : Window =
 
 
   for i in 0..(nChildrenReturn.int - 1):
-    var attr : TXWindowAttributes
 
     currentWindow = cast[PWindow](
       cast[uint](childrenReturn) + cast[uint](i * currentWindow[].sizeof)
     )
 
-    if display.XGetWindowAttributes(currentWindow[], attr.addr) == BadWindow:
+    let attr : Option[TXWindowAttributes] = getAttributes(display, currentWindow)
+
+    if attr.isNone:
       continue
 
-    if attr.map_state == IsUnmapped or attr.map_state == IsUnviewable:
+    if attr.get.map_state == IsUnmapped or attr.get.map_state == IsUnviewable:
       continue
 
-    if attr.override_redirect == 1:
+    if attr.get.override_redirect == 1:
       continue
 
     let win = Window(
-      x: attr.x.cint,
-      y: attr.y.cint,
-      width: attr.width,
-      height: attr.height,
+      x: attr.get.x.cint,
+      y: attr.get.y.cint,
+      width: attr.get.width,
+      height: attr.get.height,
       win: currentWindow[],
-      screen: attr.screen
+      screen: attr.get.screen
     )
 
     let ignored = @["_NET_WM_STRUT_PARTIAL", "_NET_WM_STRUT"]
@@ -168,7 +174,8 @@ var processChan : Channel[int]
 processChan.open(0)
 
 proc startTerminal() : Process =
-  startProcess("/usr/bin/xterm")
+  let terminal_path = getEnv("NIMWIN_TERMINAL", "/usr/bin/urxvt")
+  startProcess(terminal_path)
 
 proc launcher() : Process =
   let launcher_path = getEnv("NIMWIN_LAUNCHER", "/usr/bin/dmenu_run")
@@ -197,10 +204,11 @@ when isMainModule:
 
   display.grabKeyCombo(XK_Return, @[ShiftMask.cuint])
   display.grabKeyCombo(XK_T, @[ShiftMask.cuint])
-  display.grabKeyCombo(XK_Tab)
-  display.grabKeyCombo(XK_Q)
-  display.grabKeyCombo(XK_P)
-  display.grabKeyCombo(XK_C, @[ShiftMask.cuint])
+  display.grabKeyCombo(XK_Tab) # Cycle through windows
+  display.grabKeyCombo(XK_Q) # Restart window manager
+  display.grabKeyCombo(XK_P) # Launcher
+  display.grabKeyCombo(XK_F) # Full screen
+  display.grabKeyCombo(XK_C, @[ShiftMask.cuint]) # CLose a window
   display.grabMouse(1)
   display.grabMouse(3)
 
@@ -265,6 +273,20 @@ when isMainModule:
 
           if restartResult == -1:
             quit("Failed to restart Nimwin")
+
+      HandleKey(XK_F):
+        if ev.xKey.subWindow != None:
+          let rootAttrs = getAttributes(display, root.addr)
+
+          if rootAttrs.isSome:
+            let screenHeight = rootAttrs.get.height
+            let screenWidth = rootAttrs.get.width
+
+            discard XMoveResizeWindow(display,
+                                      ev.xKey.subWindow,
+                                      0, 0,
+                                      screenWidth.cuint, screenHeight.cuint)
+
 
     elif (ev.theType == ButtonPress) and (ev.xButton.subWindow != None):
       discard XGetWindowAttributes(display, ev.xButton.subWindow, attr.addr)
