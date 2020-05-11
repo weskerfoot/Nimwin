@@ -25,8 +25,88 @@ type Window = ref object of RootObj
   win : TWindow
   screen : PScreen
 
+type
+  WinPropKind = enum pkString, pkCardinal
+  WinProp = ref object of RootObj
+    case kind: WinPropKind
+      of pkString: strProp : cstring
+      of pkCardinal: cardinalProp : seq[uint]
+
+proc unpackCardinal(typeFormat : int,
+                    nItems : int,
+                    buf : ptr cuchar) : seq[uint] =
+
+  # See https://www.x.org/releases/current/doc/man/man3/XGetWindowProperty.3.xhtml
+
+  var byte_stride : int
+
+  case typeFormat
+    of 8:
+      byte_stride = (ptr cuchar).sizeof.int
+    of 16:
+      byte_stride = (ptr cshort).sizeof.int
+    of 32:
+      byte_stride = (ptr clong).sizeof.int
+    else:
+      return @[]
+
+  echo "byte_stride = ", byte_stride
+
+  for i in 0..(nItems - 1):
+    let currentItem = cast[uint](buf) + cast[uint](i * byte_stride)
+
+    case typeFormat
+      of 8:
+        result &= cast[ptr cuchar](currentItem)[].uint
+      of 16:
+        result &= cast[ptr cshort](currentItem)[].uint
+      of 32:
+        result &= cast[ptr clong](currentItem)[].uint
+      else:
+        continue
+
+proc getPropertyValue(display : PDisplay, window : TWindow, property : TAtom) : Option[WinProp] =
+  let longOffset : clong = 0.clong
+  let longLength : clong = high(int) # max length of the data to be returned
+
+  var actualType : TAtom
+  var actualTypeFormat : cint
+  var nitemsReturn : culong
+  var bytesAfterReturn : culong
+  var propValue : ptr cuchar
+
+  discard display.XGetWindowProperty(window,
+                                     property,
+                                     longOffset,
+                                     longLength,
+                                     false.TBool,
+                                     AnyPropertyType.TAtom,
+                                     actualType.addr,
+                                     actualTypeFormat.addr,
+                                     nitemsReturn.addr,
+                                     bytesAfterReturn.addr,
+                                     propValue.addr)
+
+  let typeName = display.XGetAtomName(actualType)
+
+  if typeName == "STRING":
+    result = some(WinProp(kind: pkString, strProp: cast[cstring](propValue)))
+  elif typeName == "CARDINAL":
+    result = some(
+              WinProp(
+                kind: pkCardinal,
+                cardinalProp: unpackCardinal(actualTypeFormat.int, nitemsReturn.int, propValue)
+              )
+            )
+  else:
+    result = none(WinProp)
+
+  discard propValue.XFree
+
+  return
+
 iterator getProperties(display : PDisplay, window : TWindow) : string =
-  # Get properties of a given window on a display
+  # Get property names/values of a given window on a display
   var nPropsReturn : cint
 
   # pointer to a list of word32
@@ -39,6 +119,12 @@ iterator getProperties(display : PDisplay, window : TWindow) : string =
     currentAtom = cast[PAtom](
       cast[uint](atoms) + cast[uint](i * currentAtom[].sizeof)
     )
+
+    let propValue = display.getPropertyValue(window, currentAtom[])
+
+    if propValue.isSome:
+      if propValue.get.kind == pkCardinal:
+        echo propValue.get.cardinalProp
 
     currentAtomName = display.XGetAtomName(currentAtom[])
     var atomName = newString(currentAtomName.len)
@@ -75,7 +161,7 @@ iterator getChildren(display : PDisplay, logFile : File) : Window =
   for i in 0..(nChildrenReturn.int - 1):
 
     currentWindow = cast[PWindow](
-      cast[uint](childrenReturn) + cast[uint](i * currentWindow[].sizeof)
+      cast[uint](childrenReturn) + cast[uint](i * currentWindow.sizeof)
     )
 
     let attr : Option[TXWindowAttributes] = getAttributes(display, currentWindow)
@@ -241,7 +327,8 @@ when isMainModule:
 
       HandleKey(XK_C):
         let windowStack = toSeq(getChildren(display, logFile))
-        discard display.XDestroyWindow(windowStack[^1].win)
+        if windowStack.len > 0:
+          discard display.XDestroyWindow(windowStack[^1].win)
 
       HandleKey(XK_Tab):
         if ev.xKey.subWindow != None:
@@ -279,6 +366,7 @@ when isMainModule:
           let rootAttrs = getAttributes(display, root.addr)
 
           if rootAttrs.isSome:
+            # TODO get height of struts and offset this from that
             let screenHeight = rootAttrs.get.height
             let screenWidth = rootAttrs.get.width
 
