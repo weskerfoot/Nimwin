@@ -53,7 +53,7 @@ proc unpackCardinal(typeFormat : int,
   echo "byte_stride = ", byte_stride
 
   for i in 0..(nItems - 1):
-    let currentItem = cast[uint](buf) + cast[uint](i * byte_stride)
+    let currentItem = cast[int](buf) + cast[int](i * byte_stride)
 
     case typeFormat
       of 8:
@@ -117,7 +117,7 @@ iterator getProperties(display : PDisplay, window : TWindow) : string =
   # Iterate over the list of atom names
   for i in 0..(nPropsReturn.int - 1):
     currentAtom = cast[PAtom](
-      cast[uint](atoms) + cast[uint](i * currentAtom[].sizeof)
+      cast[int](atoms) + cast[int](i * currentAtom[].sizeof)
     )
 
     let propValue = display.getPropertyValue(window, currentAtom[])
@@ -161,7 +161,7 @@ iterator getChildren(display : PDisplay, logFile : File) : Window =
   for i in 0..(nChildrenReturn.int - 1):
 
     currentWindow = cast[PWindow](
-      cast[uint](childrenReturn) + cast[uint](i * currentWindow.sizeof)
+      cast[int](childrenReturn) + cast[int](i * currentWindow.sizeof)
     )
 
     let attr : Option[TXWindowAttributes] = getAttributes(display, currentWindow)
