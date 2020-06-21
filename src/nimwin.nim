@@ -1,5 +1,5 @@
 import x11/xlib, x11/xutil, x11/x, x11/keysym
-import threadpool, osproc, tables, sequtils, posix, strformat, os, sugar, options
+import threadpool, osproc, tables, sequtils, posix, strformat, os, sugar, options, strutils
 
 var root : TWindow
 
@@ -137,7 +137,7 @@ proc getAttributes(display : PDisplay, window : PWindow) : Option[TXWindowAttrib
     return none(TXWindowAttributes)
   return some(attrs)
 
-iterator getChildren(display : PDisplay, logFile : File) : Window =
+iterator getChildren(display : PDisplay) : Window =
   var currentWindow : PWindow
   var rootReturn : TWindow
   var parentReturn : TWindow
@@ -180,6 +180,15 @@ iterator getChildren(display : PDisplay, logFile : File) : Window =
       screen: attr.get.screen,
       props: props
     )
+
+    for prop in props:
+      if prop.kind == pkCardinal:
+        if prop.name.startsWith("_NET_WM_STRUT"):
+          echo prop.name, ": ", prop.cardinalProp
+        elif prop.name.startsWith("_NET_WM_OPAQUE"):
+          echo prop.name, ": ", prop.cardinalProp
+        else:
+          echo prop.name, prop.kind
 
     yield win
 
@@ -263,6 +272,14 @@ proc handleProcess(p : Process) =
   discard p.waitForExit
   processChan.send(p.processID)
 
+
+proc calculateStruts(display : PDisplay) : tuple[top: uint, bottom: uint]=
+  for win in getChildren(display):
+    for prop in win.props:
+      if prop.kind == pkCardinal and prop.name == "_NET_WM_STRUT_PARTIAL":
+        result.top = max(result.top, prop.cardinalProp[2])
+        result.bottom = max(result.bottom, prop.cardinalProp[3])
+
 when isMainModule:
   discard "~/.nimwin".expandTilde.existsOrCreateDir
 
@@ -318,7 +335,7 @@ when isMainModule:
         spawn handleProcess(p)
 
       HandleKey(XK_C):
-        let windowStack = toSeq(getChildren(display, logFile))
+        let windowStack = toSeq(getChildren(display))
         if windowStack.len > 0:
           discard display.XDestroyWindow(windowStack[^1].win)
 
@@ -330,7 +347,7 @@ when isMainModule:
 
           let ignored = @["_NET_WM_STRUT_PARTIAL", "_NET_WM_STRUT"]
 
-          let windowStack = filter(toSeq(getChildren(display, logFile)), (w) => not w.props.anyIt(it.name.in(ignored)))
+          let windowStack = filter(toSeq(getChildren(display)), (w) => not w.props.anyIt(it.name.in(ignored)))
 
           discard display.XSetInputFocus(windowStack[0].win, RevertToPointerRoot, CurrentTime)
           discard display.XRaiseWindow(windowStack[0].win)
@@ -356,18 +373,30 @@ when isMainModule:
             quit("Failed to restart Nimwin")
 
       HandleKey(XK_F):
+
+        # Get all of the struts with offsets from the top
+        # Get all of the struts with offsets from the bottomm
+        # and the left and the right
+        #
+        # then subtract the max of the offsets from the top from the screenHeight
+        #
         if ev.xKey.subWindow != None:
           let rootAttrs = getAttributes(display, root.addr)
 
           if rootAttrs.isSome:
-            # TODO get height of struts and offset this from that
+            let struts = display.calculateStruts
             let screenHeight = rootAttrs.get.height
             let screenWidth = rootAttrs.get.width
 
+            let winAttrs : Option[TXWindowAttributes] = getAttributes(display, ev.xKey.subWindow.addr)
+
+            let depth = winAttrs.get.borderWidth.cuint
+            let borderWidth = winAttrs.get.depth.cuint
+
             discard XMoveResizeWindow(display,
                                       ev.xKey.subWindow,
-                                      0, 0,
-                                      screenWidth.cuint, screenHeight.cuint)
+                                      0, struts.top.cint,
+                                      screenWidth.cuint, screenHeight.cuint - struts.bottom.cuint - borderWidth)
 
 
     elif (ev.theType == ButtonPress) and (ev.xButton.subWindow != None):
