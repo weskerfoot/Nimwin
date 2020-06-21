@@ -29,7 +29,7 @@ type
   WinPropKind = enum pkString, pkCardinal
   WinProp = ref object of RootObj
     case kind: WinPropKind
-      of pkString: strProp : cstring
+      of pkString: strProp : string
       of pkCardinal: cardinalProp : seq[uint]
 
 proc unpackCardinal(typeFormat : int,
@@ -49,8 +49,6 @@ proc unpackCardinal(typeFormat : int,
       byte_stride = (ptr clong).sizeof.int
     else:
       return @[]
-
-  echo "byte_stride = ", byte_stride
 
   for i in 0..(nItems - 1):
     let currentItem = cast[int](buf) + cast[int](i * byte_stride)
@@ -90,7 +88,9 @@ proc getPropertyValue(display : PDisplay, window : TWindow, property : TAtom) : 
   let typeName = display.XGetAtomName(actualType)
 
   if typeName == "STRING":
-    result = some(WinProp(kind: pkString, strProp: cast[cstring](propValue)))
+    var propStrValue = newString(propValue.len)
+    copyMem(addr(propStrValue[0]), propValue, propValue.len)
+    result = some(WinProp(kind: pkString, strProp: propStrValue))
   elif typeName == "CARDINAL":
     result = some(
               WinProp(
@@ -121,17 +121,16 @@ iterator getProperties(display : PDisplay, window : TWindow) : string =
     )
 
     let propValue = display.getPropertyValue(window, currentAtom[])
+    currentAtomName = display.XGetAtomName(currentAtom[])
+    var atomName = newString(currentAtomName.len)
+    copyMem(addr(atomName[0]), currentAtomName, currentAtomName.len)
+    discard currentAtomName.XFree
 
     if propValue.isSome:
       if propValue.get.kind == pkCardinal:
-        echo propValue.get.cardinalProp
-
-    currentAtomName = display.XGetAtomName(currentAtom[])
-    var atomName = newString(currentAtomName.len)
-
-    copyMem(addr(atomName[0]), currentAtomName, currentAtomName.len)
-
-    discard currentAtomName.XFree
+        echo atomName, ": ", propValue.get.cardinalProp
+      if propValue.get.kind == pkString:
+        echo atomName, ": ", propValue.get.strProp
 
     yield atomName
 
@@ -185,8 +184,9 @@ iterator getChildren(display : PDisplay, logFile : File) : Window =
     )
 
     let ignored = @["_NET_WM_STRUT_PARTIAL", "_NET_WM_STRUT"]
+    let winProps = toSeq(getProperties(display, win.win))
 
-    if toSeq(getProperties(display, win.win)).anyIt(it.in(ignored)):
+    if winProps.anyIt(it.in(ignored)):
       continue
 
     yield win
