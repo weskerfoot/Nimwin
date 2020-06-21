@@ -17,6 +17,14 @@ template HandleKey(key : TKeySym, body : untyped) : untyped =
       if (XLookupKeySym(cast[PXKeyEvent](ev.xkey.addr), 0) == key.cuint):
         body
 
+type
+  WinPropKind = enum pkString, pkCardinal
+  WinProp = ref object of RootObj
+    name : string
+    case kind: WinPropKind
+      of pkString: strProp : string
+      of pkCardinal: cardinalProp : seq[uint]
+
 type Window = ref object of RootObj
   x : cint
   y : cint
@@ -24,13 +32,7 @@ type Window = ref object of RootObj
   height : cint
   win : TWindow
   screen : PScreen
-
-type
-  WinPropKind = enum pkString, pkCardinal
-  WinProp = ref object of RootObj
-    case kind: WinPropKind
-      of pkString: strProp : string
-      of pkCardinal: cardinalProp : seq[uint]
+  props : seq[WinProp]
 
 proc unpackCardinal(typeFormat : int,
                     nItems : int,
@@ -73,6 +75,11 @@ proc getPropertyValue(display : PDisplay, window : TWindow, property : TAtom) : 
   var bytesAfterReturn : culong
   var propValue : ptr cuchar
 
+  var currentAtomName = display.XGetAtomName(property)
+  var atomName = newString(currentAtomName.len)
+  copyMem(addr(atomName[0]), currentAtomName, currentAtomName.len)
+  discard currentAtomName.XFree
+
   discard display.XGetWindowProperty(window,
                                      property,
                                      longOffset,
@@ -90,10 +97,11 @@ proc getPropertyValue(display : PDisplay, window : TWindow, property : TAtom) : 
   if typeName == "STRING":
     var propStrValue = newString(propValue.len)
     copyMem(addr(propStrValue[0]), propValue, propValue.len)
-    result = some(WinProp(kind: pkString, strProp: propStrValue))
+    result = some(WinProp(name: atomName, kind: pkString, strProp: propStrValue))
   elif typeName == "CARDINAL":
     result = some(
               WinProp(
+                name: atomName,
                 kind: pkCardinal,
                 cardinalProp: unpackCardinal(actualTypeFormat.int, nitemsReturn.int, propValue)
               )
@@ -105,14 +113,13 @@ proc getPropertyValue(display : PDisplay, window : TWindow, property : TAtom) : 
 
   return
 
-iterator getProperties(display : PDisplay, window : TWindow) : string =
+iterator getProperties(display : PDisplay, window : TWindow) : Option[WinProp] =
   # Get property names/values of a given window on a display
   var nPropsReturn : cint
 
   # pointer to a list of word32
   var atoms : PAtom = display.XListProperties(window, nPropsReturn.addr)
   var currentAtom : PAtom
-  var currentAtomName : cstring
 
   # Iterate over the list of atom names
   for i in 0..(nPropsReturn.int - 1):
@@ -120,19 +127,7 @@ iterator getProperties(display : PDisplay, window : TWindow) : string =
       cast[int](atoms) + cast[int](i * currentAtom[].sizeof)
     )
 
-    let propValue = display.getPropertyValue(window, currentAtom[])
-    currentAtomName = display.XGetAtomName(currentAtom[])
-    var atomName = newString(currentAtomName.len)
-    copyMem(addr(atomName[0]), currentAtomName, currentAtomName.len)
-    discard currentAtomName.XFree
-
-    if propValue.isSome:
-      if propValue.get.kind == pkCardinal:
-        echo atomName, ": ", propValue.get.cardinalProp
-      if propValue.get.kind == pkString:
-        echo atomName, ": ", propValue.get.strProp
-
-    yield atomName
+    yield display.getPropertyValue(window, currentAtom[])
 
   discard atoms.XFree
 
@@ -174,20 +169,17 @@ iterator getChildren(display : PDisplay, logFile : File) : Window =
     if attr.get.override_redirect == 1:
       continue
 
+    let props = map(toSeq(getProperties(display, currentWindow[])).filterIt(it.isSome), (p) => p.get)
+
     let win = Window(
       x: attr.get.x.cint,
       y: attr.get.y.cint,
       width: attr.get.width,
       height: attr.get.height,
       win: currentWindow[],
-      screen: attr.get.screen
+      screen: attr.get.screen,
+      props: props
     )
-
-    let ignored = @["_NET_WM_STRUT_PARTIAL", "_NET_WM_STRUT"]
-    let winProps = toSeq(getProperties(display, win.win))
-
-    if winProps.anyIt(it.in(ignored)):
-      continue
 
     yield win
 
@@ -336,7 +328,9 @@ when isMainModule:
           #discard XCirculateSubwindows(display, root, RaiseLowest)
           #discard display.XFlush()
 
-          let windowStack = toSeq(getChildren(display, logFile))
+          let ignored = @["_NET_WM_STRUT_PARTIAL", "_NET_WM_STRUT"]
+
+          let windowStack = filter(toSeq(getChildren(display, logFile)), (w) => not w.props.anyIt(it.name.in(ignored)))
 
           discard display.XSetInputFocus(windowStack[0].win, RevertToPointerRoot, CurrentTime)
           discard display.XRaiseWindow(windowStack[0].win)
