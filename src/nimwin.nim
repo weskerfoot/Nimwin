@@ -349,8 +349,9 @@ when isMainModule:
 
           let windowStack = filter(toSeq(getChildren(display)), (w) => not w.props.anyIt(it.name.in(ignored)))
 
-          discard display.XSetInputFocus(windowStack[0].win, RevertToPointerRoot, CurrentTime)
-          discard display.XRaiseWindow(windowStack[0].win)
+          if windowStack.len > 0:
+            discard display.XSetInputFocus(windowStack[0].win, RevertToPointerRoot, CurrentTime)
+            discard display.XRaiseWindow(windowStack[0].win)
 
       HandleKey(XK_P):
         let p = launcher()
