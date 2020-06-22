@@ -17,8 +17,7 @@ env DISPLAY=:1 ./nimwin
 ```
 
 ### How to launch a window?
-If you want to run xterm, for example, just run `xterm -display :1`
-Or, set `NIMWIN_LAUNCHER` to a launcher, and then type `Alt + P` to invoke it.
+If you want to run xterm, for example, just set `NIMWIN_LAUNCHER` to a launcher (e.g. `dmenu`), and then type `Alt + p` to invoke it.
 
 ### How to move windows
 
