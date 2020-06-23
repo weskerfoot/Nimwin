@@ -262,7 +262,7 @@ processChan.open(0)
 
 proc startTerminal() : Process =
   let terminal_path = getEnv("NIMWIN_TERMINAL", "/usr/bin/urxvt")
-  startProcess(terminal_path)
+  startProcess(terminal_path, "", ["-e", "tmux"])
 
 proc launcher() : Process =
   let launcher_path = getEnv("NIMWIN_LAUNCHER", "/usr/bin/dmenu_run")
@@ -276,7 +276,7 @@ proc handleProcess(p : Process) =
 proc calculateStruts(display : PDisplay) : tuple[top: uint, bottom: uint]=
   for win in getChildren(display):
     for prop in win.props:
-      if prop.kind == pkCardinal and prop.name == "_NET_WM_STRUT_PARTIAL":
+      if prop.kind == pkCardinal and prop.name.startsWith("_NET_WM_STRUT"):
         result.top = max(result.top, prop.cardinalProp[2])
         result.bottom = max(result.bottom, prop.cardinalProp[3])
 
