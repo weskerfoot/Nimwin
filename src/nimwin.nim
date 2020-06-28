@@ -6,6 +6,7 @@ var root : TWindow
 proc handleBadWindow(display : PDisplay, ev : PXErrorEvent) : cint {.cdecl.} =
   # resourceID maps to the Window's XID
   # ev.resourceID
+  echo "Bad window", ": ", ev.resourceid
   0
 
 proc handleIOError(display : PDisplay) : cint {.cdecl.} =
@@ -139,6 +140,11 @@ proc getAttributes(display : PDisplay, window : PWindow) : Option[TXWindowAttrib
   if display.XGetWindowAttributes(window[], attrs.addr) == BadWindow:
     return none(TXWindowAttributes)
   return some(attrs)
+
+proc changeEvMask(display : PDisplay, window : PWindow, eventMask : clong) =
+  var attributes : TXSetWindowAttributes
+  attributes.eventMask = eventMask
+  discard display.XChangeWindowAttributes(window[], CWEventMask, attributes.addr)
 
 iterator getChildren(display : PDisplay) : Window =
   var currentWindow : PWindow
@@ -299,6 +305,8 @@ when isMainModule:
 
   root = DefaultRootWindow(display)
 
+  display.changeEvMask(root.addr, SubstructureNotifyMask or StructureNotifyMask or ExposureMask)
+
   display.grabKeyCombo(XK_Return, @[ShiftMask.cuint])
   display.grabKeyCombo(XK_T, @[ShiftMask.cuint])
   display.grabKeyCombo(XK_Tab) # Cycle through windows
@@ -352,6 +360,7 @@ when isMainModule:
           let windowStack = filter(toSeq(getChildren(display)), (w) => not w.props.anyIt(it.name.in(ignored)))
 
           if windowStack.len > 0:
+            echo "Tab cycling shit, raising this window: ", windowStack[0].win
             discard display.XSetInputFocus(windowStack[0].win, RevertToPointerRoot, CurrentTime)
             discard display.XRaiseWindow(windowStack[0].win)
 
@@ -405,6 +414,27 @@ when isMainModule:
     elif (ev.theType == ButtonPress) and (ev.xButton.subWindow != None):
       discard XGetWindowAttributes(display, ev.xButton.subWindow, attr.addr)
       start = ev.xButton
+
+    elif (ev.theType == CreateNotify) and (ev.xcreatewindow.parent == root):
+      let rootAttrs = getAttributes(display, root.addr)
+      if rootAttrs.isSome:
+        let struts = display.calculateStruts
+        let screenHeight = rootAttrs.get.height
+        let screenWidth = rootAttrs.get.width
+
+        let winAttrs : Option[TXWindowAttributes] = getAttributes(display, ev.xcreatewindow.window.addr)
+
+        let depth = winAttrs.get.borderWidth.cuint
+        let borderWidth = winAttrs.get.depth.cuint
+
+        if winAttrs.isSome and winAttrs.get.overrideRedirect == 0:
+          discard XMoveResizeWindow(display,
+                                    ev.xcreatewindow.window,
+                                    0, struts.top.cint,
+                                    screenWidth.cuint, screenHeight.cuint - struts.bottom.cuint - borderWidth.cuint)
+
+    elif (ev.theType == MapNotify) and (ev.xmap.overrideRedirect == 0):
+      discard display.XSetInputFocus(ev.xmap.window, RevertToPointerRoot, CurrentTime)
 
     elif (ev.theType == MotionNotify) and (start.subWindow != None):
 
