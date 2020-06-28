@@ -84,7 +84,7 @@ proc getPropertyValue(display : PDisplay, window : TWindow, property : TAtom) : 
                                      property,
                                      longOffset,
                                      longLength,
-                                     false.TBool,
+                                     false.cint,
                                      AnyPropertyType.TAtom,
                                      actualType.addr,
                                      actualTypeFormat.addr,
