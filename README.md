@@ -24,4 +24,4 @@ If you want to run xterm, for example, just set `NIMWIN_LAUNCHER` to a launcher 
 
 ### How to move windows
 
-`alt + right` click allows you to resize, `alt + left click` allows you to move, `ctrl + alt + return` opens an xterm, and `alt + tab` cycles through windows, changing the focus each time.
+`alt + right` click allows you to resize, `alt + left click` allows you to move, `ctrl + alt + return` opens an xterm, and `alt + tab` cycles through windows, changing the focus each time. `alt + t` makes a window full-screen.

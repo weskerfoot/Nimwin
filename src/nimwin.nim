@@ -304,7 +304,7 @@ when isMainModule:
   display.grabKeyCombo(XK_Tab) # Cycle through windows
   display.grabKeyCombo(XK_Q) # Restart window manager
   display.grabKeyCombo(XK_P) # Launcher
-  display.grabKeyCombo(XK_F) # Full screen
+  display.grabKeyCombo(XK_T) # Full screen
   display.grabKeyCombo(XK_C, @[ShiftMask.cuint]) # CLose a window
   display.grabMouse(1)
   display.grabMouse(3)
@@ -375,7 +375,7 @@ when isMainModule:
           if restartResult == -1:
             quit("Failed to restart Nimwin")
 
-      HandleKey(XK_F):
+      HandleKey(XK_T):
 
         # Get all of the struts with offsets from the top
         # Get all of the struts with offsets from the bottomm
