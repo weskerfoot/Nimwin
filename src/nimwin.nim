@@ -305,7 +305,7 @@ when isMainModule:
 
   root = DefaultRootWindow(display)
 
-  display.changeEvMask(root.addr, SubstructureNotifyMask or StructureNotifyMask or ExposureMask)
+  display.changeEvMask(root.addr, SubstructureNotifyMask or StructureNotifyMask)
 
   display.grabKeyCombo(XK_Return, @[ShiftMask.cuint])
   display.grabKeyCombo(XK_T, @[ShiftMask.cuint])
