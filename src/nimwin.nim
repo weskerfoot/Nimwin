@@ -96,8 +96,11 @@ proc getPropertyValue(display : PDisplay, window : TWindow, property : TAtom) : 
 
   if typeName == "STRING":
     var propStrValue = newString(propValue.len)
-    copyMem(addr(propStrValue[0]), propValue, propValue.len)
-    result = some(WinProp(name: atomName, kind: pkString, strProp: propStrValue))
+    if propStrValue.len > 0:
+      copyMem(addr(propStrValue[0]), propValue, propValue.len)
+      result = some(WinProp(name: atomName, kind: pkString, strProp: propStrValue))
+    else:
+      result = none(WinProp)
   elif typeName == "CARDINAL":
     result = some(
               WinProp(
@@ -272,7 +275,6 @@ proc handleProcess(p : Process) =
   discard p.waitForExit
   processChan.send(p.processID)
 
-
 proc calculateStruts(display : PDisplay) : tuple[top: uint, bottom: uint]=
   for win in getChildren(display):
     for prop in win.props:
@@ -397,7 +399,7 @@ when isMainModule:
             discard XMoveResizeWindow(display,
                                       ev.xKey.subWindow,
                                       0, struts.top.cint,
-                                      screenWidth.cuint, screenHeight.cuint - struts.bottom.cuint - borderWidth)
+                                      screenWidth.cuint, screenHeight.cuint - struts.bottom.cuint - borderWidth.cuint)
 
 
     elif (ev.theType == ButtonPress) and (ev.xButton.subWindow != None):
