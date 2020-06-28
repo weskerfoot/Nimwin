@@ -1,6 +1,7 @@
 import x11/xlib, x11/xutil, x11/x, x11/keysym
 import threadpool, osproc, tables, sequtils, posix, strformat, os, sugar, options, strutils
 
+
 var root : TWindow
 
 proc handleBadWindow(display : PDisplay, ev : PXErrorEvent) : cint {.cdecl.} =
@@ -415,25 +416,22 @@ when isMainModule:
       discard XGetWindowAttributes(display, ev.xButton.subWindow, attr.addr)
       start = ev.xButton
 
-    elif (ev.theType == CreateNotify) and (ev.xcreatewindow.parent == root):
+
+    elif (ev.theType == MapNotify) and (ev.xmap.overrideRedirect == 0):
       let rootAttrs = getAttributes(display, root.addr)
       if rootAttrs.isSome:
         let struts = display.calculateStruts
         let screenHeight = rootAttrs.get.height
         let screenWidth = rootAttrs.get.width
 
-        let winAttrs : Option[TXWindowAttributes] = getAttributes(display, ev.xcreatewindow.window.addr)
-
-        let depth = winAttrs.get.borderWidth.cuint
-        let borderWidth = winAttrs.get.depth.cuint
+        let winAttrs : Option[TXWindowAttributes] = getAttributes(display, ev.xmap.window.addr)
 
         if winAttrs.isSome and winAttrs.get.overrideRedirect == 0:
           discard XMoveResizeWindow(display,
-                                    ev.xcreatewindow.window,
+                                    ev.xmap.window,
                                     0, struts.top.cint,
-                                    screenWidth.cuint, screenHeight.cuint - struts.bottom.cuint - borderWidth.cuint)
+                                    screenWidth.cuint, screenHeight.cuint)
 
-    elif (ev.theType == MapNotify) and (ev.xmap.overrideRedirect == 0):
       discard display.XSetInputFocus(ev.xmap.window, RevertToPointerRoot, CurrentTime)
 
     elif (ev.theType == MotionNotify) and (start.subWindow != None):
