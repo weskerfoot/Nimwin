@@ -361,7 +361,6 @@ when isMainModule:
           let windowStack = filter(toSeq(getChildren(display)), (w) => not w.props.anyIt(it.name.in(ignored)))
 
           if windowStack.len > 0:
-            echo "Tab cycling shit, raising this window: ", windowStack[0].win
             discard display.XSetInputFocus(windowStack[0].win, RevertToPointerRoot, CurrentTime)
             discard display.XRaiseWindow(windowStack[0].win)
 
@@ -427,8 +426,7 @@ when isMainModule:
         let winAttrs : Option[TXWindowAttributes] = getAttributes(display, ev.xcreatewindow.window.addr)
 
         if winAttrs.isSome and winAttrs.get.override_redirect == 0:
-          let props = toSeq(getProperties(display, ev.xmap.window))
-          for prop in props:
+          for prop in getProperties(display, ev.xmap.window):
             if prop.isSome and prop.get.kind == pkCardinal:
               if prop.get.name.startsWith("_NET_WM_STRUT"):
                 # Ignore struts
