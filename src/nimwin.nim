@@ -402,20 +402,19 @@ when isMainModule:
 
             let winAttrs : Option[TXWindowAttributes] = getAttributes(display, ev.xKey.subWindow.addr)
 
-            let depth = winAttrs.get.borderWidth.cuint
-            let borderWidth = winAttrs.get.depth.cuint
+            let borderWidth = winAttrs.get.borderWidth.cuint
 
             discard XMoveResizeWindow(display,
                                       ev.xKey.subWindow,
-                                      0, struts.top.cint,
-                                      screenWidth.cuint, screenHeight.cuint - struts.bottom.cuint - borderWidth.cuint)
+                                      struts.bottom.cint, struts.top.cint,
+                                      screenWidth.cuint, screenHeight.cuint - struts.top.cuint - struts.bottom.cuint)
 
 
     elif (ev.theType == ButtonPress) and (ev.xButton.subWindow != None):
       discard XGetWindowAttributes(display, ev.xButton.subWindow, attr.addr)
       start = ev.xButton
 
-    elif (ev.theType == CreateNotify) and (ev.xcreatewindow.parent == root):
+    elif (ev.theType == MapNotify) and (ev.xmap.overrideRedirect == 0):
       let rootAttrs = getAttributes(display, root.addr)
       if rootAttrs.isSome:
         let struts = display.calculateStruts
@@ -424,17 +423,12 @@ when isMainModule:
 
         let winAttrs : Option[TXWindowAttributes] = getAttributes(display, ev.xcreatewindow.window.addr)
 
-        let depth = winAttrs.get.borderWidth.cuint
-        let borderWidth = winAttrs.get.depth.cuint
+        discard XMoveResizeWindow(display,
+                                  ev.xmap.window,
+                                  struts.bottom.cint, struts.top.cint,
+                                  screenWidth.cuint, screenHeight.cuint - struts.top.cuint - struts.bottom.cuint)
 
-        if winAttrs.isSome and winAttrs.get.overrideRedirect == 0:
-          discard XMoveResizeWindow(display,
-                                    ev.xcreatewindow.window,
-                                    0, struts.top.cint,
-                                    screenWidth.cuint, screenHeight.cuint - struts.bottom.cuint - borderWidth.cuint)
-
-    elif (ev.theType == MapNotify) and (ev.xmap.overrideRedirect == 0):
-      discard display.XSetInputFocus(ev.xmap.window, RevertToPointerRoot, CurrentTime)
+        discard display.XSetInputFocus(ev.xmap.window, RevertToPointerRoot, CurrentTime)
 
     elif (ev.theType == MotionNotify) and (start.subWindow != None):
 
