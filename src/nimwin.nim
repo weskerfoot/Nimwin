@@ -416,6 +416,8 @@ when isMainModule:
       start = ev.xButton
 
     elif (ev.theType == MapNotify) and (ev.xmap.override_redirect == 0):
+      var ignore = false
+
       let rootAttrs = getAttributes(display, root.addr)
       if rootAttrs.isSome:
         let struts = display.calculateStruts
@@ -425,12 +427,21 @@ when isMainModule:
         let winAttrs : Option[TXWindowAttributes] = getAttributes(display, ev.xcreatewindow.window.addr)
 
         if winAttrs.isSome and winAttrs.get.override_redirect == 0:
-          discard XMoveResizeWindow(display,
-                                    ev.xmap.window,
-                                    struts.bottom.cint, struts.top.cint,
-                                    screenWidth.cuint, screenHeight.cuint - struts.top.cuint - struts.bottom.cuint)
+          let props = toSeq(getProperties(display, ev.xmap.window))
+          for prop in props:
+            if prop.isSome and prop.get.kind == pkCardinal:
+              if prop.get.name.startsWith("_NET_WM_STRUT"):
+                # Ignore struts
+                ignore = true
+                break
+            
+          if not ignore:
+            discard XMoveResizeWindow(display,
+                                      ev.xmap.window,
+                                      struts.bottom.cint, struts.top.cint,
+                                      screenWidth.cuint, screenHeight.cuint - struts.top.cuint - struts.bottom.cuint)
 
-          discard display.XSetInputFocus(ev.xmap.window, RevertToPointerRoot, CurrentTime)
+            discard display.XSetInputFocus(ev.xmap.window, RevertToPointerRoot, CurrentTime)
 
     elif (ev.theType == MotionNotify) and (start.subWindow != None):
 
