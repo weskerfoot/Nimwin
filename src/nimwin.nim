@@ -1,6 +1,7 @@
 import x11/xlib, x11/xutil, x11/x, x11/keysym
 import threadpool, osproc, tables, sequtils, posix, strformat, os, sugar, options, strutils
 
+
 var root : TWindow
 
 proc handleBadWindow(display : PDisplay, ev : PXErrorEvent) : cint {.cdecl.} =
