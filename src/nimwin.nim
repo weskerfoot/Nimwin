@@ -20,12 +20,13 @@ template HandleKey(key : TKeySym, body : untyped) : untyped =
         body
 
 type
-  WinPropKind = enum pkString, pkCardinal
+  WinPropKind = enum pkString, pkCardinal, pkAtom
   WinProp = ref object of RootObj
     name : string
     case kind: WinPropKind
       of pkString: strProp : string
       of pkCardinal: cardinalProp : seq[uint]
+      of pkAtom: atomProps : seq[string]
 
 type Window = ref object of RootObj
   x : cint
@@ -73,7 +74,7 @@ proc getPropertyValue(display : PDisplay, window : TWindow, property : TAtom) : 
 
   var actualType : TAtom
   var actualTypeFormat : cint
-  var nitemsReturn : culong
+  var nItemsReturn : culong
   var bytesAfterReturn : culong
   var propValue : ptr cuchar
 
@@ -90,7 +91,7 @@ proc getPropertyValue(display : PDisplay, window : TWindow, property : TAtom) : 
                                      AnyPropertyType.TAtom,
                                      actualType.addr,
                                      actualTypeFormat.addr,
-                                     nitemsReturn.addr,
+                                     nItemsReturn.addr,
                                      bytesAfterReturn.addr,
                                      propValue.addr)
 
@@ -108,7 +109,30 @@ proc getPropertyValue(display : PDisplay, window : TWindow, property : TAtom) : 
               WinProp(
                 name: atomName,
                 kind: pkCardinal,
-                cardinalProp: unpackCardinal(actualTypeFormat.int, nitemsReturn.int, propValue)
+                cardinalProp: unpackCardinal(actualTypeFormat.int, nItemsReturn.int, propValue)
+              )
+            )
+  elif typeName == "ATOM":
+    var currentAtomName : cstring
+    var atomNames : seq[string]
+    discard display.XGetAtomNames(cast[PAtom](propValue), nItemsReturn.cint, currentAtomName.addr)
+    var currentAtomNames : ptr cstring = currentAtomName.addr
+
+    for i in 0..(nItemsReturn.int - 1):
+      currentAtomName = (cast[ptr cstring](
+        cast[int](currentAtomNames) + cast[int](i * currentAtomNames[].sizeof)
+      ))[]
+
+      var atomStrValue : string = newString(currentAtomName.len)
+      copyMem(addr(atomStrValue[0]), currentAtomName, currentAtomName.len)
+      if atomStrValue.len > 0:
+        atomNames &= atomStrValue
+
+    result = some(
+              WinProp(
+                name: atomName,
+                kind: pkAtom,
+                atomProps: atomNames
               )
             )
   else:
@@ -199,6 +223,8 @@ iterator getChildren(display : PDisplay) : Window =
           echo prop.name, ": ", prop.cardinalProp
         else:
           echo prop.name, prop.kind
+      if prop.kind == pkAtom:
+        echo "Atoms = ", prop.atomProps
 
     yield win
 
@@ -289,6 +315,19 @@ proc calculateStruts(display : PDisplay) : tuple[top: uint, bottom: uint]=
         result.top = max(result.top, prop.cardinalProp[2])
         result.bottom = max(result.bottom, prop.cardinalProp[3])
 
+
+proc shouldTrackWindow(window : Window) : bool =
+  let ignored = @["_NET_WM_STRUT_PARTIAL", "_NET_WM_STRUT"]
+  if window.props.anyIt(it.name.in(ignored)):
+    return false
+
+  for prop in window.props:
+    if prop.kind == pkAtom:
+      for atomValue in prop.atomProps:
+        if atomValue == "_NET_WM_STATE_STICKY":
+          return false
+  return true
+
 when isMainModule:
   discard "~/.nimwin".expandTilde.existsOrCreateDir
 
@@ -356,9 +395,7 @@ when isMainModule:
           #discard XCirculateSubwindows(display, root, RaiseLowest)
           #discard display.XFlush()
 
-          let ignored = @["_NET_WM_STRUT_PARTIAL", "_NET_WM_STRUT"]
-
-          let windowStack = filter(toSeq(getChildren(display)), (w) => not w.props.anyIt(it.name.in(ignored)))
+          let windowStack = filter(toSeq(getChildren(display)), shouldTrackWindow)
 
           if windowStack.len > 0:
             discard display.XSetInputFocus(windowStack[0].win, RevertToPointerRoot, CurrentTime)
@@ -432,6 +469,11 @@ when isMainModule:
                 # Ignore struts
                 ignore = true
                 break
+            if prop.isSome and prop.get.kind == pkAtom:
+              for atomValue in prop.get.atomProps:
+                if atomValue == "_NET_WM_STATE_STICKY":
+                  ignore = true
+                  break
             
           if not ignore:
             discard XMoveResizeWindow(display,
