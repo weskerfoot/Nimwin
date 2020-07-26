@@ -37,9 +37,9 @@ type Window = ref object of RootObj
   screen : PScreen
   props : seq[WinProp]
 
-proc unpackCardinal(typeFormat : int,
-                    nItems : int,
-                    buf : ptr cuchar) : seq[uint] =
+proc unpackPropValue(typeFormat : int,
+                     nItems : int,
+                     buf : ptr cuchar) : seq[uint] =
 
   # See https://www.x.org/releases/current/doc/man/man3/XGetWindowProperty.3.xhtml
 
@@ -109,30 +109,27 @@ proc getPropertyValue(display : PDisplay, window : TWindow, property : TAtom) : 
               WinProp(
                 name: atomName,
                 kind: pkCardinal,
-                cardinalProp: unpackCardinal(actualTypeFormat.int, nItemsReturn.int, propValue)
+                cardinalProp: unpackPropValue(actualTypeFormat.int, nItemsReturn.int, propValue)
               )
             )
   elif typeName == "ATOM":
     var currentAtomName : cstring
-    var atomNames : seq[string]
-    discard display.XGetAtomNames(cast[PAtom](propValue), nItemsReturn.cint, currentAtomName.addr)
-    var currentAtomNames : ptr cstring = currentAtomName.addr
+    var atomPropNames : seq[string]
 
-    for i in 0..(nItemsReturn.int - 1):
-      currentAtomName = (cast[ptr cstring](
-        cast[int](currentAtomNames) + cast[int](i * currentAtomNames[].sizeof)
-      ))[]
+    for atom in unpackPropValue(actualTypeFormat.int, nItemsReturn.int, propValue):
+      let atomPropNameCS = display.XGetAtomName(atom.culong)
+      var atomPropName = newString(atomPropNameCS.len)
+      if atomPropName.len > 0:
+        copyMem(addr(atomPropName[0]), atomPropNameCS, atomPropNameCS.len)
+        atomPropNames &= atomPropName
 
-      var atomStrValue : string = newString(currentAtomName.len)
-      copyMem(addr(atomStrValue[0]), currentAtomName, currentAtomName.len)
-      if atomStrValue.len > 0:
-        atomNames &= atomStrValue
+      discard atomPropNameCS.XFree
 
     result = some(
               WinProp(
                 name: atomName,
                 kind: pkAtom,
-                atomProps: atomNames
+                atomProps: atomPropNames
               )
             )
   else:
