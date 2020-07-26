@@ -13,6 +13,12 @@ proc handleBadWindow(display : PDisplay, ev : PXErrorEvent) : cint {.cdecl.} =
 proc handleIOError(display : PDisplay) : cint {.cdecl.} =
   0
 
+proc cstringToNim(cst : cstring) : Option[string] =
+  var nst = newString(cst.len)
+  if nst.len > 0:
+    copyMem(addr(nst[0]), cst, cst.len)
+    return some(nst)
+  none(string)
 
 template HandleKey(key : TKeySym, body : untyped) : untyped =
     block:
@@ -79,8 +85,11 @@ proc getPropertyValue(display : PDisplay, window : TWindow, property : TAtom) : 
   var propValue : ptr cuchar
 
   var currentAtomName = display.XGetAtomName(property)
-  var atomName = newString(currentAtomName.len)
-  copyMem(addr(atomName[0]), currentAtomName, currentAtomName.len)
+  var atomName = cstringToNim(currentAtomName)
+
+  if atomName.isNone:
+    quit(fmt"Could not allocate atomName for some reason")
+
   discard currentAtomName.XFree
 
   discard display.XGetWindowProperty(window,
@@ -95,19 +104,22 @@ proc getPropertyValue(display : PDisplay, window : TWindow, property : TAtom) : 
                                      bytesAfterReturn.addr,
                                      propValue.addr)
 
+  if actualTypeFormat == 0:
+    # Invalid type
+    return none(WinProp)
+
   let typeName = display.XGetAtomName(actualType)
 
   if typeName == "STRING":
-    var propStrValue = newString(propValue.len)
-    if propStrValue.len > 0:
-      copyMem(addr(propStrValue[0]), propValue, propValue.len)
-      result = some(WinProp(name: atomName, kind: pkString, strProp: propStrValue))
+    var propStrValue = cstringToNim(propValue)
+    if propStrValue.isSome:
+      result = some(WinProp(name: atomName.get, kind: pkString, strProp: propStrValue.get))
     else:
       result = none(WinProp)
   elif typeName == "CARDINAL":
     result = some(
               WinProp(
-                name: atomName,
+                name: atomName.get,
                 kind: pkCardinal,
                 cardinalProp: unpackPropValue(actualTypeFormat.int, nItemsReturn.int, propValue)
               )
@@ -118,16 +130,15 @@ proc getPropertyValue(display : PDisplay, window : TWindow, property : TAtom) : 
 
     for atom in unpackPropValue(actualTypeFormat.int, nItemsReturn.int, propValue):
       let atomPropNameCS = display.XGetAtomName(atom.culong)
-      var atomPropName = newString(atomPropNameCS.len)
-      if atomPropName.len > 0:
-        copyMem(addr(atomPropName[0]), atomPropNameCS, atomPropNameCS.len)
-        atomPropNames &= atomPropName
+      var atomPropName = cstringToNim(atomPropNameCS)
+      if atomPropName.isSome:
+        atomPropNames &= atomPropName.get
 
       discard atomPropNameCS.XFree
 
     result = some(
               WinProp(
-                name: atomName,
+                name: atomName.get,
                 kind: pkAtom,
                 atomProps: atomPropNames
               )
