@@ -56,6 +56,7 @@ proc unpackPropValue(typeFormat : int,
     of 16:
       byte_stride = (ptr cshort).sizeof.int
     of 32:
+      # This *is* correct. X treats anything of size '32' as a long for historical / poor design reasons.
       byte_stride = (ptr clong).sizeof.int
     else:
       return @[]
@@ -297,11 +298,11 @@ proc grabKeyCombo(display : PDisplay,
 #   Send a message via channel to the main thread when it's done waiting for it to exit
 #   Check for events on the current iteration, close the process, remove it from the set of open processes
 
-# Used to signal when a process has exited
+# This channel is used to signal when a process has exited
 # Obviously only used for processes nimwin manages
-var processChan : Channel[int]
+var exitedProcesses : Channel[int]
 
-processChan.open(0)
+exitedProcesses.open(0)
 
 proc startTerminal() : Process =
   let terminal_path = getEnv("NIMWIN_TERMINAL", "/usr/bin/urxvt")
@@ -312,8 +313,10 @@ proc launcher() : Process =
   startProcess(launcher_path)
 
 proc handleProcess(p : Process) =
+  # Wait for a process to exit before broadcasting that it exited
+  # This allows us to call `.close` on it which is necessary to not create zombie processes.
   discard p.waitForExit
-  processChan.send(p.processID)
+  exitedProcesses.send(p.processID)
 
 proc calculateStruts(display : PDisplay) : tuple[top: uint, bottom: uint]=
   for win in getChildren(display):
@@ -395,7 +398,7 @@ when isMainModule:
   discard XSetIOErrorHandler(handleIOError)
 
   while true:
-    let processExited = processChan.tryRecv()
+    let processExited = exitedProcesses.tryRecv()
 
     if processExited.dataAvailable:
       openProcesses[processExited.msg].close
