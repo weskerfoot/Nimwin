@@ -1,7 +1,6 @@
 import x11/xlib, x11/xutil, x11/x, x11/keysym
 import threadpool, osproc, tables, sequtils, posix, strformat, os, sugar, options, strutils
 
-
 var root : TWindow
 
 proc handleBadWindow(display : PDisplay, ev : PXErrorEvent) : cint {.cdecl.} =
@@ -336,6 +335,29 @@ proc shouldTrackWindow(window : Window) : bool =
           return false
   return true
 
+proc getWMProtocols(window : Window) : Option[seq[string]] =
+  for prop in window.props:
+    if prop.kind == pkAtom and prop.name == "WM_PROTOCOLS":
+      return some(prop.atomProps)
+  none(seq[string])
+
+proc deleteWindow(display : PDisplay, window : Window) =
+  let protocols = window.getWMProtocols
+
+  if protocols.isSome and ("WM_DELETE_WINDOW" in protocols.get):
+    var deleteEvent : TXEvent
+
+    deleteEvent.xclient.theType = ClientMessage
+    deleteEvent.xclient.window = window.win
+    deleteEvent.xclient.messageType = display.XInternAtom("WM_PROTOCOLS".cstring, true.TBool)
+    deleteEvent.xclient.format = 32
+    deleteEvent.xclient.data.l[0] = display.XInternAtom("WM_DELETE_WINDOW".cstring, false.TBool).clong
+    deleteEvent.xclient.data.l[1] = CurrentTime
+
+    discard display.XSendEvent(window.win, false.TBool, NoEventMask, deleteEvent.addr)
+  else:
+    discard display.XDestroyWindow(window.win)
+
 when isMainModule:
   discard "~/.nimwin".expandTilde.existsOrCreateDir
 
@@ -395,7 +417,7 @@ when isMainModule:
       HandleKey(XK_C):
         let windowStack = toSeq(getChildren(display))
         if windowStack.len > 0:
-          discard display.XDestroyWindow(windowStack[^1].win)
+          display.deleteWindow(windowStack[^1])
 
       HandleKey(XK_Tab):
         if ev.xKey.subWindow != None:
