@@ -20,9 +20,15 @@ proc cstringToNim(cst : cstring) : Option[string] =
   none(string)
 
 template HandleKey(key : TKeySym, body : untyped) : untyped =
-    block:
-      if (XLookupKeySym(cast[PXKeyEvent](ev.xkey.addr), 0) == key.cuint):
-        body
+  block:
+    if (XLookupKeySym(cast[PXKeyEvent](ev.xkey.addr), 0) == key.cuint):
+      body
+
+template RunProcess(procedure : untyped) : untyped =
+  block:
+    let p = procedure()
+    openProcesses[p.processID] = p
+    spawn handleProcess(p)
 
 type
   WinPropKind = enum pkString, pkCardinal, pkAtom
@@ -412,10 +418,14 @@ when isMainModule:
     # For spawning, e.g. a terminal we also want events for the root window
 
     if ev.theType == KeyPress:
+
+      # ctrl+mod+shift runs terminal
       HandleKey(XK_Return):
-        let p = startTerminal()
-        openProcesses[p.processID] = p
-        spawn handleProcess(p)
+        RunProcess(startTerminal)
+
+      HandleKey(XK_P):
+        # mod+p runs the launcher
+        RunProcess(launcher)
 
       HandleKey(XK_C):
         let windowStack = toSeq(getChildren(display))
@@ -433,11 +443,6 @@ when isMainModule:
           if windowStack.len > 0:
             discard display.XSetInputFocus(windowStack[0].win, RevertToPointerRoot, CurrentTime)
             discard display.XRaiseWindow(windowStack[0].win)
-
-      HandleKey(XK_P):
-        let p = launcher()
-        openProcesses[p.processID] = p
-        spawn handleProcess(p)
 
       HandleKey(XK_Q):
         let currentPath = getAppDir()
