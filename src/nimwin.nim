@@ -1,5 +1,5 @@
 import x11/xlib, x11/xutil, x11/x, x11/keysym
-import threadpool, osproc, tables, sequtils, posix, strformat, os, sugar, options, strutils
+import threadpool, osproc, tables, sequtils, posix, strformat, os, sugar, options, strutils, algorithm
 
 var root : TWindow
 
@@ -47,6 +47,59 @@ type Window = ref object of RootObj
   win : TWindow
   screen : PScreen
   props : seq[WinProp]
+
+type Zipper[T] = tuple[
+    lhs: seq[T],
+    rhs: seq[T]
+]
+
+proc zipperFocus[T](zipper: Zipper[T]) : Option[T] =
+  if zipper.rhs.len > 0:
+    some(zipper.rhs[0])
+  else:
+    none(T)
+
+proc zipperMove[T](zipper: Zipper[T], direction: string) : Zipper[T] =
+  # This implements a "zipper" data structure
+  # A zipper is a data structure with a "focus"
+  # i.e. a pointer into a particular position
+  # in this case we have a zipper of a list, so we have
+  # a list with a focus that lets us move left or right
+  # and it will wrap around to the other side in either direction
+  #
+  # This function will always allocate a new structure (or leave it untouched)
+  # and won't mutate the original, as this is an immutable data structure
+
+  if zipper.rhs.len == 0 and zipper.lhs.len == 0:
+    return zipper
+
+  if direction == "right" and zipper.rhs.len == 1:
+    result.lhs = @[]
+    result.rhs = zipper.lhs.reversed & zipper.rhs # append head(rhs) to lhs
+    return
+
+  if direction == "right":
+    result.lhs = @[zipper.rhs[0]] & zipper.lhs # cons head(rhs) onto lhs
+    result.rhs = zipper.rhs[1..^1] # drop head of rhs
+
+  if direction == "left" and zipper.lhs.len == 0:
+    result.lhs = zipper.rhs.reversed[1..^1] # make lhs = tail of rhs
+    result.rhs = @[zipper.rhs.reversed[0]] # make the focus be the last item in the rhs
+    return
+
+  if direction == "left":
+    result.lhs = zipper.lhs[1..^1] # drop the head of the lhs
+    result.rhs = @[zipper.lhs[0]] & zipper.rhs # move the focus left
+
+proc zipperInsert[T](zipper: Zipper[T], item: T) : Zipper[T] =
+  # insert a new item before as the current focus
+  result.lhs = zipper.lhs
+  result.rhs = @[item] & zipper.rhs
+
+proc zipperRemove[T](zipper: Zipper[T], item: T) : Zipper[T] =
+  # find and delete an item in the zipper
+  result.lhs = filter(zipper.lhs, (x) => x != item)
+  result.rhs = filter(zipper.rhs, (x) => x != item)
 
 proc unpackPropValue(typeFormat : int,
                      nItems : int,
@@ -399,6 +452,17 @@ when isMainModule:
   start.subWindow = None
 
   var openProcesses = initTable[int, Process]() # hashset of processes
+
+  var windowZipper : Zipper[TWindow]
+
+  # When a window is opened: goes on the top of the rhs stack, focus is moved to it
+  # When a window is destroyed:
+  #   if it is the current focus:
+  #     remove it from the zipper and focus on the next rhs window, or move the the start of the lhs, or do nothing if no other windows
+  #   if it is not the current focus:
+  #     remove it from the zipper, and keep the current focus
+  # When focus is changed:
+  #   simply move the focus pointer right, wrapping around if necessary
 
   discard XSetErrorHandler(handleBadWindow)
   discard XSetIOErrorHandler(handleIOError)
