@@ -71,11 +71,15 @@ proc zipperMove[T](zipper: Zipper[T], direction: string) : Zipper[T] =
   # and won't mutate the original, as this is an immutable data structure
 
   if zipper.rhs.len == 0 and zipper.lhs.len == 0:
+    # If the zipper is empty, do nothing
     return zipper
 
-  if direction == "right" and zipper.rhs.len == 1:
+  if direction == "right" and zipper.rhs.len < 2:
+    # If there is 1 or 0 items left on the rhs, then we always want to reset
+    # since moving right usually means popping an item off the rhs and moving to the lhs
+    # otherwise the rhs would be empty, which should be an invariant
     result.lhs = @[]
-    result.rhs = zipper.lhs.reversed & zipper.rhs # append head(rhs) to lhs
+    result.rhs = zipper.lhs.reversed & zipper.rhs
     return
 
   if direction == "right":
@@ -100,6 +104,11 @@ proc zipperRemove[T](zipper: Zipper[T], item: T) : Zipper[T] =
   # find and delete an item in the zipper
   result.lhs = filter(zipper.lhs, (x) => x != item)
   result.rhs = filter(zipper.rhs, (x) => x != item)
+
+  # If we removed the focused item, then wrap around
+  if result.rhs.len == 0:
+    result.rhs = result.lhs.reversed
+    result.lhs = @[]
 
 proc unpackPropValue(typeFormat : int,
                      nItems : int,
@@ -385,18 +394,20 @@ proc calculateStruts(display : PDisplay) : tuple[top: uint, bottom: uint]=
         result.bottom = max(result.bottom, prop.cardinalProp[3])
 
 
-proc shouldTrackWindow(display : PDisplay, window : Window) : bool =
+proc shouldTrackWindow(display : PDisplay, window : PWindow) : bool =
   result = true
-  let winAttrs : Option[TXWindowAttributes] = getAttributes(display, window.win.addr)
+  let winAttrs : Option[TXWindowAttributes] = getAttributes(display, window)
 
   if winAttrs.isSome and winAttrs.get.override_redirect == 1:
     result = false
 
+  let props = map(toSeq(getProperties(display, window[])).filterIt(it.isSome), (p) => p.get)
+
   let ignored = @["_NET_WM_STRUT_PARTIAL", "_NET_WM_STRUT"]
-  if window.props.anyIt(it.name.in(ignored)):
+  if props.anyIt(it.name.in(ignored)):
     result = false
 
-  for prop in window.props:
+  for prop in props:
     if prop.kind == pkAtom:
       for atomValue in prop.atomProps:
         if atomValue == "_NET_WM_STATE_STICKY":
@@ -497,21 +508,19 @@ when isMainModule:
         RunProcess(launcher)
 
       HandleKey(XK_C):
+        # TODO replace with XGetInputFocus and delete the focused window
         let windowStack = toSeq(getChildren(display))
         if windowStack.len > 0:
           display.deleteWindow(windowStack[^1])
 
       HandleKey(XK_Tab):
         if ev.xKey.subWindow != None:
-          # Cycle through subwindows of the root window
-          #discard XCirculateSubwindows(display, root, RaiseLowest)
-          #discard display.XFlush()
-
-          let windowStack = filter(toSeq(getChildren(display)), ((w) => display.shouldTrackWindow(w)))
-
-          if windowStack.len > 0:
-            discard display.XSetInputFocus(windowStack[0].win, RevertToPointerRoot, CurrentTime)
-            discard display.XRaiseWindow(windowStack[0].win)
+          echo windowZipper
+          windowZipper = windowZipper.zipperMove("right")
+          let focus = windowZipper.zipperFocus
+          if focus.isSome:
+            discard display.XSetInputFocus(focus.get, RevertToPointerRoot, CurrentTime)
+            discard display.XRaiseWindow(focus.get)
 
       HandleKey(XK_Q):
         let currentPath = getAppDir()
@@ -558,37 +567,30 @@ when isMainModule:
       discard XGetWindowAttributes(display, ev.xButton.subWindow, attr.addr)
       start = ev.xButton
 
-    elif (ev.theType == MapNotify) and (ev.xmap.override_redirect == 0):
-      var ignore = false
+    elif (ev.theType == UnmapNotify):
+      # Switch focus potentially when a window is unmapped
+      windowZipper = windowZipper.zipperRemove(ev.xunmap.window)
+      let focus = windowZipper.zipperFocus
+      if focus.isSome:
+        discard display.XSetInputFocus(focus.get, RevertToPointerRoot, CurrentTime)
+        discard display.XRaiseWindow(focus.get)
 
+    elif (ev.theType == MapNotify) and (ev.xmap.override_redirect == 0):
       let rootAttrs = getAttributes(display, root.addr)
       if rootAttrs.isSome:
         let struts = display.calculateStruts
         let screenHeight = rootAttrs.get.height
         let screenWidth = rootAttrs.get.width
 
-        let winAttrs : Option[TXWindowAttributes] = getAttributes(display, ev.xmap.window.addr)
+        if display.shouldTrackWindow(ev.xmap.window.addr):
+          windowZipper= windowZipper.zipperInsert(ev.xmap.window)
 
-        if winAttrs.isSome and winAttrs.get.override_redirect == 0:
-          for prop in getProperties(display, ev.xmap.window):
-            if prop.isSome and prop.get.kind == pkCardinal:
-              if prop.get.name.startsWith("_NET_WM_STRUT"):
-                # Ignore struts
-                ignore = true
-                break
-            if prop.isSome and prop.get.kind == pkAtom:
-              for atomValue in prop.get.atomProps:
-                if atomValue == "_NET_WM_STATE_STICKY":
-                  ignore = true
-                  break
-            
-          if not ignore:
-            discard XMoveResizeWindow(display,
-                                      ev.xmap.window,
-                                      struts.bottom.cint, struts.top.cint,
-                                      screenWidth.cuint, screenHeight.cuint - struts.top.cuint - struts.bottom.cuint)
+          discard XMoveResizeWindow(display,
+                                    ev.xmap.window,
+                                    struts.bottom.cint, struts.top.cint,
+                                    screenWidth.cuint, screenHeight.cuint - struts.top.cuint - struts.bottom.cuint)
 
-            discard display.XSetInputFocus(ev.xmap.window, RevertToPointerRoot, CurrentTime)
+          discard display.XSetInputFocus(ev.xmap.window, RevertToPointerRoot, CurrentTime)
 
     elif (ev.theType == MotionNotify) and (start.subWindow != None):
 
