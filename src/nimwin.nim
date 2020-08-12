@@ -562,7 +562,7 @@ when isMainModule:
         let screenHeight = rootAttrs.get.height
         let screenWidth = rootAttrs.get.width
 
-        let winAttrs : Option[TXWindowAttributes] = getAttributes(display, ev.xcreatewindow.window.addr)
+        let winAttrs : Option[TXWindowAttributes] = getAttributes(display, ev.xmap.window.addr)
 
         if winAttrs.isSome and winAttrs.get.override_redirect == 0:
           for prop in getProperties(display, ev.xmap.window):
