@@ -385,17 +385,22 @@ proc calculateStruts(display : PDisplay) : tuple[top: uint, bottom: uint]=
         result.bottom = max(result.bottom, prop.cardinalProp[3])
 
 
-proc shouldTrackWindow(window : Window) : bool =
+proc shouldTrackWindow(display : PDisplay, window : Window) : bool =
+  result = true
+  let winAttrs : Option[TXWindowAttributes] = getAttributes(display, window.win.addr)
+
+  if winAttrs.isSome and winAttrs.get.override_redirect == 1:
+    result = false
+
   let ignored = @["_NET_WM_STRUT_PARTIAL", "_NET_WM_STRUT"]
   if window.props.anyIt(it.name.in(ignored)):
-    return false
+    result = false
 
   for prop in window.props:
     if prop.kind == pkAtom:
       for atomValue in prop.atomProps:
         if atomValue == "_NET_WM_STATE_STICKY":
-          return false
-  return true
+          result = false
 
 proc getWMProtocols(window : Window) : Option[seq[string]] =
   for prop in window.props:
@@ -502,7 +507,7 @@ when isMainModule:
           #discard XCirculateSubwindows(display, root, RaiseLowest)
           #discard display.XFlush()
 
-          let windowStack = filter(toSeq(getChildren(display)), shouldTrackWindow)
+          let windowStack = filter(toSeq(getChildren(display)), ((w) => display.shouldTrackWindow(w)))
 
           if windowStack.len > 0:
             discard display.XSetInputFocus(windowStack[0].win, RevertToPointerRoot, CurrentTime)
