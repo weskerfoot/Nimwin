@@ -570,10 +570,11 @@ when isMainModule:
     elif (ev.theType == UnmapNotify):
       # Switch focus potentially when a window is unmapped
       windowZipper = windowZipper.zipperRemove(ev.xunmap.window)
-      let focus = windowZipper.zipperFocus
-      if focus.isSome:
-        discard display.XSetInputFocus(focus.get, RevertToPointerRoot, CurrentTime)
-        discard display.XRaiseWindow(focus.get)
+      if display.shouldTrackWindow(ev.xunmap.window.addr):
+        let focus = windowZipper.zipperFocus
+        if focus.isSome:
+          discard display.XSetInputFocus(focus.get, RevertToPointerRoot, CurrentTime)
+          discard display.XRaiseWindow(focus.get)
 
     elif (ev.theType == MapNotify) and (ev.xmap.override_redirect == 0):
       let rootAttrs = getAttributes(display, root.addr)
