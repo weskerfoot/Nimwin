@@ -110,6 +110,10 @@ proc zipperRemove[T](zipper: Zipper[T], item: T) : Zipper[T] =
     result.rhs = result.lhs.reversed
     result.lhs = @[]
 
+proc zipperExists[T](zipper: Zipper[T], item: T) : bool =
+  return (zipper.lhs.anyIt(it == item) or
+          zipper.rhs.anyIt(it == item))
+
 proc unpackPropValue(typeFormat : int,
                      nItems : int,
                      buf : ptr cuchar) : seq[uint] =
@@ -468,17 +472,7 @@ when isMainModule:
   start.subWindow = None
 
   var openProcesses = initTable[int, Process]() # hashset of processes
-
-  var windowZipper : Zipper[TWindow]
-
-  # When a window is opened: goes on the top of the rhs stack, focus is moved to it
-  # When a window is destroyed:
-  #   if it is the current focus:
-  #     remove it from the zipper and focus on the next rhs window, or move the the start of the lhs, or do nothing if no other windows
-  #   if it is not the current focus:
-  #     remove it from the zipper, and keep the current focus
-  # When focus is changed:
-  #   simply move the focus pointer right, wrapping around if necessary
+  var windowZipper : Zipper[TWindow] # zipper to track window focus
 
   discard XSetErrorHandler(handleBadWindow)
   discard XSetIOErrorHandler(handleIOError)
@@ -569,12 +563,24 @@ when isMainModule:
 
     elif (ev.theType == UnmapNotify):
       # Switch focus potentially when a window is unmapped
-      windowZipper = windowZipper.zipperRemove(ev.xunmap.window)
-      if display.shouldTrackWindow(ev.xunmap.window.addr):
+      echo "unmapped window = ", ev.xunmap.window
+      if windowZipper.zipperExists(ev.xunmap.window):
+        windowZipper = windowZipper.zipperRemove(ev.xunmap.window)
         let focus = windowZipper.zipperFocus
         if focus.isSome:
+          echo "newly focused window = ", focus.get
           discard display.XSetInputFocus(focus.get, RevertToPointerRoot, CurrentTime)
           discard display.XRaiseWindow(focus.get)
+
+    elif (ev.theType == FocusIn):
+      let currentFocus = windowZipper.zipperFocus
+      let windowStack = map(toSeq(getChildren(display)), (w) => w.win)
+
+      if currentFocus.isSome:
+        if currentFocus.get != ev.xfocus.window:
+          # restack it
+          windowZipper.rhs = windowStack.reversed
+          windowZipper.lhs = @[]
 
     elif (ev.theType == MapNotify) and (ev.xmap.override_redirect == 0):
       let rootAttrs = getAttributes(display, root.addr)
@@ -592,6 +598,9 @@ when isMainModule:
                                     screenWidth.cuint, screenHeight.cuint - struts.top.cuint - struts.bottom.cuint)
 
           discard display.XSetInputFocus(ev.xmap.window, RevertToPointerRoot, CurrentTime)
+
+          # Listen for FocusChange (FocusIn/FocusOut) events on the window
+          display.changeEvMask(ev.xmap.window.addr, FocusChangeMask)
 
     elif (ev.theType == MotionNotify) and (start.subWindow != None):
 
