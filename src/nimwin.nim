@@ -574,10 +574,9 @@ when isMainModule:
 
     elif (ev.theType == FocusIn):
       let currentFocus = windowZipper.zipperFocus
-      let windowStack = map(toSeq(getChildren(display)), (w) => w.win)
-
       if currentFocus.isSome:
         if currentFocus.get != ev.xfocus.window:
+          let windowStack = map(toSeq(getChildren(display)), (w) => w.win)
           # restack it
           windowZipper.rhs = windowStack.reversed
           windowZipper.lhs = @[]
