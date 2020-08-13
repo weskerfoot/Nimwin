@@ -576,7 +576,12 @@ when isMainModule:
       let currentFocus = windowZipper.zipperFocus
       if currentFocus.isSome:
         if currentFocus.get != ev.xfocus.window:
-          let windowStack = map(toSeq(getChildren(display)), (w) => w.win)
+          var windowStack : seq[TWindow] = @[]
+
+          # Restack everything and make sure we should track it
+          for window in getChildren(display):
+            if display.shouldTrackWindow(window.win.addr):
+              windowStack &= window.win
           # restack it
           windowZipper.rhs = windowStack.reversed
           windowZipper.lhs = @[]
