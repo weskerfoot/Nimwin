@@ -31,13 +31,14 @@ template RunProcess(procedure : untyped) : untyped =
     spawn handleProcess(p)
 
 type
-  WinPropKind = enum pkString, pkCardinal, pkAtom
+  WinPropKind = enum pkString, pkCardinal, pkAtom, pkWindow
   WinProp = ref object of RootObj
     name : string
     case kind: WinPropKind
       of pkString: strProp : string
       of pkCardinal: cardinalProp : seq[uint]
       of pkAtom: atomProps : seq[string]
+      of pkWindow: windowProps : seq[TWindow]
 
 type Window = ref object of RootObj
   x : cint
@@ -97,6 +98,8 @@ proc zipperMove[T](zipper: Zipper[T], direction: string) : Zipper[T] =
 
 proc zipperInsert[T](zipper: Zipper[T], item: T) : Zipper[T] =
   # insert a new item before as the current focus
+  if zipper.zipperExists(item):
+    return zipper
   result.lhs = zipper.lhs
   result.rhs = @[item] & zipper.rhs
 
@@ -213,6 +216,15 @@ proc getPropertyValue(display : PDisplay, window : TWindow, property : TAtom) : 
                 name: atomName.get,
                 kind: pkAtom,
                 atomProps: atomPropNames
+              )
+            )
+
+  elif typeName == "WINDOW":
+    result = some(
+              WinProp(
+                name: atomName.get,
+                kind: pkWindow,
+                windowProps: mapIt(unpackPropValue(actualTypeFormat.int, nItemsReturn.int, propValue), it.culong)
               )
             )
   else:
