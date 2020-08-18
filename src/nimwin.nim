@@ -615,8 +615,8 @@ when isMainModule:
           windowZipper.rhs = windowStack.reversed
           windowZipper.lhs = @[]
 
-      if currentFocus.isSome:
-        var focus = currentFocus.get
+      if windowZipper.zipperFocus.isSome:
+        var focus = windowZipper.zipperFocus.get
         display.setActiveWindow(root, focus.addr)
         echo display.getActiveWindowName(root)
 
@@ -636,6 +636,8 @@ when isMainModule:
                                     screenWidth.cuint, screenHeight.cuint - struts.top.cuint - struts.bottom.cuint)
 
           discard display.XSetInputFocus(ev.xmap.window, RevertToPointerRoot, CurrentTime)
+
+          display.setActiveWindow(root, ev.xmap.window.addr)
 
           # Listen for FocusChange (FocusIn/FocusOut) events on the window
           display.changeEvMask(ev.xmap.window.addr, FocusChangeMask)
