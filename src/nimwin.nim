@@ -452,6 +452,23 @@ proc deleteWindow(display : PDisplay, window : Window) =
   else:
     discard display.XDestroyWindow(window.win)
 
+proc setActiveWindow(display : PDisplay, root : TWindow, window : PWindow) =
+  let netActiveWindow : TAtom = display.XInternAtom("_NET_ACTIVE_WINDOW", false.TBool)
+  let windowType : TAtom = display.XInternAtom("WINDOW", false.TBool)
+  discard display.XChangeProperty(root, netActiveWindow, windowType, 32, PropModeReplace, cast[ptr cuchar](window), 1)
+
+proc getActiveWindowName(display : PDisplay, root : TWindow) : Option[string] =
+  var winNameReturn : cstring
+
+  for prop in getProperties(display, root):
+    if prop.isSome and prop.get.kind == pkWindow and prop.get.name == "_NET_ACTIVE_WINDOW":
+      if prop.get.windowProps.len > 0:
+        discard display.XFetchName(prop.get.windowProps[0], winNameReturn.addr)
+
+  result = cstringToNim(winNameReturn)
+  discard winNameReturn.XFree
+
+
 when isMainModule:
   discard "~/.nimwin".expandTilde.existsOrCreateDir
 
@@ -597,6 +614,11 @@ when isMainModule:
           # restack it
           windowZipper.rhs = windowStack.reversed
           windowZipper.lhs = @[]
+
+      if currentFocus.isSome:
+        var focus = currentFocus.get
+        display.setActiveWindow(root, focus.addr)
+        echo display.getActiveWindowName(root)
 
     elif (ev.theType == MapNotify) and (ev.xmap.override_redirect == 0):
       let rootAttrs = getAttributes(display, root.addr)
