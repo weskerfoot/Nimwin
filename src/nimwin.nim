@@ -599,7 +599,7 @@ when isMainModule:
 
             discard XMoveResizeWindow(display,
                                       ev.xKey.subWindow,
-                                      struts.bottom.cint, struts.top.cint,
+                                      0, struts.top.cint,
                                       screenWidth.cuint, screenHeight.cuint - struts.top.cuint - struts.bottom.cuint)
 
 
@@ -654,7 +654,7 @@ when isMainModule:
 
           discard XMoveResizeWindow(display,
                                     ev.xmap.window,
-                                    struts.bottom.cint, struts.top.cint,
+                                    0, struts.top.cint,
                                     screenWidth.cuint, screenHeight.cuint - struts.top.cuint - struts.bottom.cuint)
 
           discard display.XSetInputFocus(ev.xmap.window, RevertToPointerRoot, CurrentTime)
