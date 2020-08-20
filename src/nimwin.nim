@@ -409,7 +409,6 @@ proc calculateStruts(display : PDisplay) : tuple[top: uint, bottom: uint]=
         result.top = max(result.top, prop.cardinalProp[2])
         result.bottom = max(result.bottom, prop.cardinalProp[3])
 
-
 proc shouldTrackWindow(display : PDisplay, window : PWindow) : bool =
   result = true
   let winAttrs : Option[TXWindowAttributes] = getAttributes(display, window)
@@ -452,10 +451,23 @@ proc deleteWindow(display : PDisplay, window : Window) =
   else:
     discard display.XDestroyWindow(window.win)
 
-proc setActiveWindow(display : PDisplay, root : TWindow, window : PWindow) =
-  let netActiveWindow : TAtom = display.XInternAtom("_NET_ACTIVE_WINDOW", false.TBool)
+proc setRootProperties(display : PDisplay, root : TWindow, windows : seq[TWindow], propName : string) =
+  # Set properties on the root window, assuming they are of type WINDOW
+  if windows.len == 0:
+    return
+
+  let propAtom : TAtom = display.XInternAtom(propName, false.TBool)
   let windowType : TAtom = display.XInternAtom("WINDOW", false.TBool)
-  discard display.XChangeProperty(root, netActiveWindow, windowType, 32, PropModeReplace, cast[ptr cuchar](window), 1)
+
+  let windowPtr : PWindow = unsafeAddr(windows[0])
+
+  discard display.XChangeProperty(root,
+                                  propAtom,
+                                  windowType,
+                                  32,
+                                  PropModeReplace,
+                                  cast[ptr cuchar](windowPtr),
+                                  windows.len.cint)
 
 proc getActiveWindowName(display : PDisplay, root : TWindow) : Option[string] =
   var winNameReturn : cstring
@@ -506,6 +518,12 @@ when isMainModule:
   discard XSetErrorHandler(handleBadWindow)
   discard XSetIOErrorHandler(handleIOError)
 
+  # Tracks the order windows were mapped in initially
+  var mappedWindows : seq[TWindow] = @[]
+
+  display.setRootProperties(root, @[], "_NET_CLIENT_LIST_STACKING")
+  display.setRootProperties(root, @[], "_NET_CLIENT_LIST")
+
   while true:
     let processExited = exitedProcesses.tryRecv()
 
@@ -538,7 +556,6 @@ when isMainModule:
 
       HandleKey(XK_Tab):
         if ev.xKey.subWindow != None:
-          echo windowZipper
           windowZipper = windowZipper.zipperMove("right")
           let focus = windowZipper.zipperFocus
           if focus.isSome:
@@ -593,32 +610,37 @@ when isMainModule:
     elif (ev.theType == UnmapNotify):
       # Switch focus potentially when a window is unmapped
       echo "unmapped window = ", ev.xunmap.window
+
+      # Update the mapped windows
+      mappedWindows = mappedWindows.filterIt(it != ev.xunmap.window)
+      display.setRootProperties(root, mappedWindows, "_NET_CLIENT_LIST")
+
       if windowZipper.zipperExists(ev.xunmap.window):
         windowZipper = windowZipper.zipperRemove(ev.xunmap.window)
+
         let focus = windowZipper.zipperFocus
         if focus.isSome:
-          echo "newly focused window = ", focus.get
           discard display.XSetInputFocus(focus.get, RevertToPointerRoot, CurrentTime)
           discard display.XRaiseWindow(focus.get)
 
     elif (ev.theType == FocusIn):
+      var windowStack : seq[TWindow] = @[]
+      for window in getChildren(display):
+        if display.shouldTrackWindow(window.win.addr):
+          windowStack &= window.win
+
       let currentFocus = windowZipper.zipperFocus
       if currentFocus.isSome:
         if currentFocus.get != ev.xfocus.window:
-          var windowStack : seq[TWindow] = @[]
 
-          # Restack everything and make sure we should track it
-          for window in getChildren(display):
-            if display.shouldTrackWindow(window.win.addr):
-              windowStack &= window.win
           # restack it
           windowZipper.rhs = windowStack.reversed
           windowZipper.lhs = @[]
 
       if windowZipper.zipperFocus.isSome:
         var focus = windowZipper.zipperFocus.get
-        display.setActiveWindow(root, focus.addr)
-        echo display.getActiveWindowName(root)
+        display.setRootProperties(root, windowStack, "_NET_CLIENT_LIST_STACKING")
+        display.setRootProperties(root, @[focus], "_NET_ACTIVE_WINDOW")
 
     elif (ev.theType == MapNotify) and (ev.xmap.override_redirect == 0):
       let rootAttrs = getAttributes(display, root.addr)
@@ -628,7 +650,7 @@ when isMainModule:
         let screenWidth = rootAttrs.get.width
 
         if display.shouldTrackWindow(ev.xmap.window.addr):
-          windowZipper= windowZipper.zipperInsert(ev.xmap.window)
+          windowZipper = windowZipper.zipperInsert(ev.xmap.window)
 
           discard XMoveResizeWindow(display,
                                     ev.xmap.window,
@@ -637,10 +659,14 @@ when isMainModule:
 
           discard display.XSetInputFocus(ev.xmap.window, RevertToPointerRoot, CurrentTime)
 
-          display.setActiveWindow(root, ev.xmap.window.addr)
+          display.setRootProperties(root, @[ev.xmap.window], "_NET_ACTIVE_WINDOW")
 
           # Listen for FocusChange (FocusIn/FocusOut) events on the window
           display.changeEvMask(ev.xmap.window.addr, FocusChangeMask)
+          
+          # Update the mapped windows
+          mappedWindows &= @[ev.xmap.window]
+          display.setRootProperties(root, mappedWindows, "_NET_CLIENT_LIST")
 
     elif (ev.theType == MotionNotify) and (start.subWindow != None):
 
